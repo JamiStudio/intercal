@@ -15,7 +15,7 @@ build real bodies on real seams. This plan precedes the existing dated plan 01 a
 
 ## Status Legend
 
-- [x] Not started · [~] In progress · [x] Complete · [!] Blocked or requires decision
+- [ ] Not started · [~] In progress · [x] Complete · [!] Blocked or requires decision
 
 ## Source Findings
 

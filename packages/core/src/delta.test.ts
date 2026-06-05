@@ -17,7 +17,9 @@ import { type AssembleInput, assembleDigest, type DocMeta } from './delta.js';
 
 const DOC_RUST = 'aaaaaaaa-0000-0000-0000-000000000001';
 const DOC_FV = 'aaaaaaaa-0000-0000-0000-000000000002';
+const DOC_OTHER = 'aaaaaaaa-0000-0000-0000-000000000003';
 const ENT_RUST = 'bbbbbbbb-0000-0000-0000-000000000001';
+const ENT_OTHER = 'bbbbbbbb-0000-0000-0000-000000000002';
 
 function factVersion(
   overrides: Partial<FactVersionsTable> & { id: string; recorded_at: Date },
@@ -70,6 +72,11 @@ const docMeta: DocMeta[] = [
     id: DOC_FV,
     url: 'https://blog.rust-lang.org/2026/06/05/state-change',
     published_at: new Date('2026-06-04T12:00:00.000Z'),
+  },
+  {
+    id: DOC_OTHER,
+    url: 'https://example.org/other',
+    published_at: new Date('2026-06-03T00:00:00.000Z'),
   },
 ];
 
@@ -344,5 +351,175 @@ describe('assembleDigest — fact-version changes (the canonical change unit)', 
     const res = assembleDigest(input({ claimRows: [], factVersionRows: [] }));
     expect(res.summary.content).toMatch(/No recorded changes/);
     expect(res.summary.citations).toEqual([]);
+  });
+});
+
+// ── Matrix hardening (audit pass 5): explicit coverage for the bitemporal edges the four prior
+// passes touched and the cross-subject / cross-axis interactions, so no future regression in the
+// classification, double-count, citation-integrity, freshness-across-axes, or budget invariants can
+// slip through silently. assembleDigest is the pure surface that owns all of these. ───────────────
+describe('assembleDigest — multi-supersession & mixed change sets', () => {
+  it('counts a subject superseded MULTIPLE times in the window exactly once (per-subject, not per-row)', () => {
+    // Two closings of the SAME subject landed in-window (A→B then B→C). The classifier counts the
+    // subject once as superseded and never also as a new assertion. Per-row counting would say "2
+    // superseded" and double-report; per-subject is the contract.
+    const closedA = factVersion({
+      id: 'fv_a',
+      recorded_at: new Date('2026-06-02T00:00:00.000Z'),
+      is_current: false,
+      superseded_by_id: 'fv_b',
+      superseded_at: new Date('2026-06-03T00:00:00.000Z'),
+    });
+    const closedB = factVersion({
+      id: 'fv_b',
+      recorded_at: new Date('2026-06-03T00:00:00.000Z'),
+      is_current: false,
+      superseded_by_id: 'fv_c',
+      superseded_at: new Date('2026-06-04T00:00:00.000Z'),
+    });
+    const currentC = factVersion({ id: 'fv_c', recorded_at: new Date('2026-06-04T00:00:00.000Z') });
+    const res = assembleDigest(
+      input({ claimRows: [], factVersionRows: [closedA, closedB, currentC] }),
+    );
+    expect(res.summary.content).toMatch(/1 fact superseded/);
+    expect(res.summary.content).not.toMatch(/new fact version/);
+  });
+
+  it('classifies a mixed batch: one subject superseded (cross-cutoff) + one brand-new, each counted once', () => {
+    // Two different subjects in the same window: ENT_RUST is a cross-cutoff supersession (only its new
+    // current row is in-window, but it has a prior version), ENT_OTHER is genuinely new. The lede must
+    // report exactly "1 fact superseded" AND "1 new fact version", proving per-subject classification
+    // does not bleed across subjects.
+    const rustNew = factVersion({
+      id: 'fv_rust',
+      fact_subject_id: ENT_RUST,
+      recorded_at: new Date('2026-06-05T20:00:00.000Z'),
+    });
+    const otherNew = factVersion({
+      id: 'fv_other',
+      fact_subject_id: ENT_OTHER,
+      recorded_at: new Date('2026-06-05T19:00:00.000Z'),
+    });
+    const res = assembleDigest(
+      input({
+        claimRows: [],
+        factVersionRows: [rustNew, otherNew],
+        priorVersionSubjectIds: [ENT_RUST],
+      }),
+    );
+    expect(res.summary.content).toMatch(/1 fact superseded/);
+    expect(res.summary.content).toMatch(/1 new fact version/);
+  });
+
+  it('a subject hit by BOTH supersession signals (in-window closed row AND a prior version) counts once', () => {
+    // Belt-and-suspenders: the subject has an in-window closed predecessor (signal a) AND is listed in
+    // priorVersionSubjectIds (signal b). It must still be a single supersession, never doubled.
+    const closed = factVersion({
+      id: 'fv_old',
+      recorded_at: new Date('2026-06-02T00:00:00.000Z'),
+      is_current: false,
+      superseded_by_id: 'fv_new',
+      superseded_at: new Date('2026-06-05T00:00:00.000Z'),
+    });
+    const current = factVersion({
+      id: 'fv_new',
+      recorded_at: new Date('2026-06-05T00:00:00.000Z'),
+    });
+    const res = assembleDigest(
+      input({
+        claimRows: [],
+        factVersionRows: [closed, current],
+        priorVersionSubjectIds: [ENT_RUST],
+      }),
+    );
+    expect(res.summary.content).toMatch(/1 fact superseded/);
+    expect(res.summary.content).not.toMatch(/new fact version/);
+  });
+});
+
+describe('assembleDigest — freshness across both bitemporal axes', () => {
+  it('lastUpdated is the fact-version recorded_at when it is newer than every changed claim', () => {
+    const oldClaim = claim({ id: 'c1', created_at: new Date('2026-06-03T00:00:00.000Z') });
+    const newerFv = factVersion({ id: 'fv1', recorded_at: new Date('2026-06-05T23:00:00.000Z') });
+    const res = assembleDigest(input({ claimRows: [oldClaim], factVersionRows: [newerFv] }));
+    expect(res.freshness.lastUpdated).toBe('2026-06-05T23:00:00.000Z');
+  });
+
+  it('lastUpdated is the claim created_at when it is newer than every fact version', () => {
+    const newerClaim = claim({ id: 'c1', created_at: new Date('2026-06-06T00:00:00.000Z') });
+    const olderFv = factVersion({ id: 'fv1', recorded_at: new Date('2026-06-05T00:00:00.000Z') });
+    const res = assembleDigest(input({ claimRows: [newerClaim], factVersionRows: [olderFv] }));
+    expect(res.freshness.lastUpdated).toBe('2026-06-06T00:00:00.000Z');
+  });
+});
+
+describe('assembleDigest — citation integrity under trimming', () => {
+  it('a budget-trimmed claim does NOT contribute its source doc to the digest citations', () => {
+    // Citations roll up only INCLUDED items. A claim trimmed out by the budget whose ONLY backing doc
+    // is unique to it must be absent from the digest citations — otherwise the lede would cite
+    // provenance for a change it does not actually show.
+    const kept = claim({
+      id: 'kept',
+      created_at: new Date('2026-06-05T20:00:00.000Z'),
+      source_document_ids: [DOC_RUST],
+      normalized_text: 'Kept short.',
+    });
+    const trimmed = claim({
+      id: 'trimmed',
+      created_at: new Date('2026-06-05T19:00:00.000Z'),
+      source_document_ids: [DOC_OTHER],
+      normalized_text: `This trimmed change is intentionally very long ${'x'.repeat(400)} so the budget cannot fit it after the kept one.`,
+    });
+    // Budget large enough for lede + the first (kept) line, too small for the long second one.
+    const res = assembleDigest(input({ claimRows: [kept, trimmed], budget: 200 }));
+    expect(res.changedClaims).toHaveLength(1);
+    expect(res.changedClaims[0]?.id).toBe('kept');
+    const cited = res.summary.citations.map((c) => c.sourceDocumentId);
+    expect(cited).toContain(DOC_RUST);
+    expect(cited).not.toContain(DOC_OTHER);
+  });
+});
+
+describe('assembleDigest — token budget invariant under a dominant lede', () => {
+  it('never emits a claim line when the lede + footer reserve already consumes a tiny budget, and stays bounded', () => {
+    // The lede cost is reserved BEFORE trimming (audit pass 2 fix). With the minimum budget and a
+    // large change set, the rendered content must still not exceed the budget, and the omission must
+    // be reported honestly rather than overshooting.
+    const rows = Array.from({ length: 30 }, (_, i) =>
+      claim({
+        id: `c${i}`,
+        created_at: new Date(2026, 5, 5, 18, 55, 40 - i),
+        normalized_text: `Change ${i} with enough text to matter for the per-line token cost here.`,
+      }),
+    );
+    const budget = 200; // MIN_TOKEN_BUDGET
+    const res = assembleDigest(input({ claimRows: rows, budget }));
+    const estTokens = Math.ceil(res.summary.content.length / 4);
+    expect(estTokens).toBeLessThanOrEqual(budget);
+    expect(res.changedClaims.length).toBeLessThan(rows.length);
+    expect(res.summary.content).toMatch(/omitted/);
+  });
+});
+
+describe('assembleDigest — until passthrough (bounded vs unbounded window)', () => {
+  it('emits the until field when the window is bounded', () => {
+    const until = new Date('2026-06-04T00:00:00.000Z');
+    const res = assembleDigest(
+      input({
+        until,
+        claimRows: [claim({ id: 'c1', created_at: new Date('2026-06-03T00:00:00.000Z') })],
+      }),
+    );
+    expect(res.until).toBe('2026-06-04T00:00:00.000Z');
+  });
+
+  it('omits the until field when the window is unbounded', () => {
+    const res = assembleDigest(
+      input({
+        until: undefined,
+        claimRows: [claim({ id: 'c1', created_at: new Date('2026-06-03T00:00:00.000Z') })],
+      }),
+    );
+    expect(res.until).toBeUndefined();
   });
 });

@@ -2,7 +2,7 @@
 
 Date: 2026-05-21
 Aligned: 2026-06-05 to live stack (W1 complete)
-Status: [~] Active — W1–W5 complete (W5 = get_delta digest, live on Neon), W6–W8 pending
+Status: [~] Active — W1–W6 complete (W5 = get_delta digest, W6 = verify_claim verdict, both live on Neon), W7–W8 pending
 Source reports: `docs/research/2026-05-21-intercal-foundation-report.md`, `docs/research/2026-06-04-intercal-revisit-audit-and-dev-environment.md`, `docs/architecture/mcp-api.md`, `docs/architecture/provider-boundaries.md`; decisions `docs/decisions/0001-foundation-stack.md`, `docs/decisions/0002-final-hosting-topology.md`
 Owner: Main orchestration agent
 Surface: query services, REST API, MCP server, SDK, token-budgeted digests, evidence search, claim verification, freshness
@@ -13,7 +13,7 @@ Expose Intercal's temporal knowledge through stable agent-facing contracts. This
 
 ## Live Alignment (2026-06-04)
 
-This plan is **Phase C** of the master program (`docs/roadmaps/2026-06-04-intercal-program.md`). The app is already live at `lntercal.vercel.app` (Next.js + Hono on Vercel reading Neon). The V1 read tools `get_entity`, `get_sources`, `get_freshness`, and `search_evidence` are implemented; `get_delta` and `verify_claim` are real seams with deferred bodies (`NotImplementedError`) — implementing those two query bodies is the core of this plan.
+This plan is **Phase C** of the master program (`docs/roadmaps/2026-06-04-intercal-program.md`). The app is already live at `lntercal.vercel.app` (Next.js + Hono on Vercel reading Neon). All six V1 read tools — `get_entity`, `get_sources`, `get_freshness`, `search_evidence`, `get_delta` (W5), and `verify_claim` (W6) — are implemented with real bodies against the canonical schema. Implementing the two synthesis bodies (`get_delta`, `verify_claim`) was the core of this plan and is now complete.
 
 Concrete providers and topology (decisions `0001`/`0002`):
 - **MCP:** mounted at `/api/mcp` on Vercel, stateless Streamable HTTP transport (OAuth 2.1 resource-server auth). Stdio remains available for local use. Agents connect to one URL: `lntercal.vercel.app/api/mcp`.
@@ -170,8 +170,8 @@ Implementation tasks:
 - [x] All 6 V1 routes wired against the shared query layer and confirmed contract-valid:
       `GET /v1/{delta,entity,evidence,claims/verify,sources,freshness}` (live `/api/v1/*`).
       Route paths follow the TypeSpec contract, not REST-isms like `/entities/:id`.
-- [x] `GET /v1/delta` and `GET /v1/claims/verify` return `501 not_implemented` via the core
-      `NotImplementedError` seams — bodies are the W5/W6 deliverables, honestly deferred.
+- [x] `GET /v1/delta` (W5) and `GET /v1/claims/verify` (W6) return real DB-backed responses; the
+      former `501 not_implemented` seams are retired now that both synthesis bodies have shipped.
 - [x] Input validation against the generated contract (Ajv over the TypeSpec JSON Schemas):
       dates enforced as `date-time`, integers/limit bounds (`limit ∈ [1,100]`), required params.
 - [x] Unknown query parameters rejected with `400 invalid_request` (`additionalProperties:false`
@@ -188,8 +188,8 @@ Implementation tasks:
 - [x] Health endpoint (`GET /health`) and OpenAPI document (`GET /openapi.json`).
 - [x] CORS on the read-only `/v1/*` surface (`origin:*`, GET/OPTIONS) for browser SDK/agent
       clients. Auth + rate limits are Plan 04 — left as clean seams, not implemented here.
-- [~] `GET /delta` / `POST /claims/verify` bodies — deferred to W5/W6 (digest synthesis +
-      contradiction reasoning). Routes + validation are complete; only the bodies remain.
+- [x] `GET /delta` (W5) / `GET /claims/verify` (W6) bodies — both shipped (digest synthesis +
+      contradiction reasoning). Routes, validation, and bodies are all complete and live.
 
 Exit criteria:
 
@@ -206,8 +206,8 @@ Suggested verification:
 
 Goal: Expose the V1 read surface as agent-native MCP tools via the live `/api/mcp` mount.
 
-Status: [~] Server + mount complete (2026-06-05); the two synthesis bodies (`get_delta` W5,
-`verify_claim` W6) remain honest deferred seams.
+Status: [x] Server + mount complete (2026-06-05); both synthesis bodies (`get_delta` W5,
+`verify_claim` W6) are live — no remaining deferred seams.
 
 Depends on:
 
@@ -220,7 +220,7 @@ Enables:
 Repo guidance:
 
 - MCP is mounted at `/api/mcp` on Vercel (stateless Streamable HTTP). Auth = OAuth 2.1 resource-server. Stdio remains for local dev.
-- `get_entity`, `get_sources`, `get_freshness`, and `search_evidence` are already implemented; `get_delta` and `verify_claim` are the two deferred bodies this plan must implement.
+- All six V1 tools are implemented; `get_delta` (W5) and `verify_claim` (W6) — the two synthesis bodies this plan owned — are now live alongside the four W1 read tools.
 - MCP outputs must remain compact, cited, and token-budget aware.
 
 Primary areas:
@@ -234,7 +234,8 @@ Implementation tasks:
 
 - [x] `get_delta` body — implemented in W5. The tool now returns a real token-budgeted, cited
       digest (the `getDelta` core query); verified against production Neon.
-- [~] `verify_claim` body — deferred to W6 (contradiction reasoning). Same honest-seam treatment.
+- [x] `verify_claim` body — implemented in W6. The tool now returns a real deterministic, cited
+      verdict (the `verifyClaim` core query); verified against production Neon.
 - [x] Confirmed `get_entity`, `search_evidence`, `get_sources`, `get_freshness` are wired and
       contract-valid — verified by a live MCP client against production Neon (real entity + facts
       + evidence returned). One query layer; identical semantics to REST.
@@ -447,10 +448,14 @@ Suggested verification:
 
 Goal: Return support, contradiction, uncertainty, and evidence for user claims.
 
+Status: [x] Complete (2026-06-05) — `verifyClaim` body live in `packages/core/src/verify.ts`;
+verified against production Neon. REST `/api/v1/claims/verify` + MCP `verify_claim` return real
+verdicts (no longer 501).
+
 Depends on:
 
-- [ ] Workstream 1 query services.
-- [ ] Workstream 5 digest support.
+- [x] Workstream 1 query services.
+- [x] Workstream 5 digest support (same deterministic, token-budgeted, cited pattern).
 
 Enables:
 
@@ -458,28 +463,48 @@ Enables:
 
 Repo guidance:
 
-- Verdicts must not overclaim when evidence is thin.
+- Verdicts must not overclaim when evidence is thin. (Honoured: no on-topic evidence →
+  `unverified` with confidence 0, never invented support; confidence = relevance × extraction
+  confidence, so a single weak match stays low-confidence.)
 
 Primary areas:
 
-- `packages/api`
-- `packages/mcp-server`
-- `services/synthesize`
+- `packages/core` (the `verifyClaim` body — single query layer shared by API + MCP)
+- `packages/api`, `packages/mcp-server` (already wired; surfaces the live body)
+- `services/synthesize` (not needed: deterministic verdict, no LLM — see decision below)
+
+Decision — deterministic, not LLM (mirrors W5):
+
+- No LLM client lives in `packages/core`, and adding provider logic there would cross the adapter
+  port boundary. A correct, fully-cited deterministic verdict is preferred over an uncited LLM blob.
+  Every conclusion traces to a real claim row + its source documents. Optional provider-backed
+  contradiction *prose* is a later seam behind `LlmPort` that may only rephrase already-cited
+  content and can never change the verdict.
 
 Implementation tasks:
 
-- [ ] Parse claim text into retrieval candidates.
-- [ ] Retrieve supporting and contradicting claims/evidence.
-- [ ] Assess freshness and confidence.
-- [ ] Return verdict, confidence, evidence, contradictions, and caveats.
+- [x] Parse claim text into retrieval candidates — Postgres FTS (`plainto_tsquery`/`ts_rank`) over
+      `claims.normalized_text` (the lexical leg W5 also uses), point-in-time filtered.
+- [x] Retrieve supporting and contradicting claims/evidence — deterministic classification:
+      substrate-recorded contradictions (`claim_contradictions` open rows / `contradiction_status`)
+      first, then polarity disagreement over overlapping content; otherwise support.
+- [x] Assess freshness and confidence — confidence = evidence weight (relevance × extraction
+      confidence), agreement-aware; `as_of_date` evaluates the bitemporal state at that date.
+- [x] Return verdict, confidence, evidence, contradictions — `ClaimVerificationResponse` with
+      `verdict` (supported / partially_supported / contradicted / unverified), `confidence`, and
+      `supportingEvidence` + `contradictingEvidence` citation lists; token-budgeted.
 
 Exit criteria:
 
-- [ ] Fixture claims produce supported, contradicted, and uncertain outcomes.
+- [x] Claims produce supported, contradicted, and uncertain outcomes — verified live on production
+      Neon: real facts → `supported` (cited); no-evidence claim → `unverified` (no fabrication);
+      `as_of_date` before/after recording → `unverified`/`supported` (point-in-time correct).
 
 Suggested verification:
 
-- `pnpm test -- verify-claim`
+- `pnpm --filter @intercal/core test` (pure `classify` + `assembleVerification` suite); live verify
+  via the compiled core against production Neon (and `/api/v1/claims/verify` + MCP `verify_claim`
+  post-deploy).
 
 ## Workstream 7: Freshness And Coverage
 

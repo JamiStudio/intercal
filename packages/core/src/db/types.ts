@@ -81,6 +81,22 @@ export interface ClaimsTable {
   updated_at: Date;
 }
 
+export interface ClaimContradictionsTable {
+  id: string;
+  claim_a_id: string;
+  claim_b_id: string;
+  // 'rule' | 'model' | 'human' — how the contradiction was detected.
+  detection_method: string;
+  confidence: string; // numeric
+  description: string | null;
+  // 'open' | 'resolved' | 'dismissed' — only 'open' rows are live contradictions.
+  resolution_status: string;
+  resolved_claim_id: string | null;
+  resolved_at: Date | null;
+  resolved_by: string | null;
+  created_at: Date;
+}
+
 export interface FactVersionsTable {
   id: string;
   // 'entity' | 'relationship' | 'claim' — what the version describes (polymorphic FK).
@@ -142,6 +158,7 @@ export interface Database {
   entity_external_ids: EntityExternalIdsTable;
   relationships: RelationshipsTable;
   claims: ClaimsTable;
+  claim_contradictions: ClaimContradictionsTable;
   fact_versions: FactVersionsTable;
   source_documents: SourceDocumentsTable;
   sources: SourcesTable;

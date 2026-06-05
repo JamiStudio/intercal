@@ -3,9 +3,9 @@
  * transport pair. This exercises the actual JSON-RPC wire path (initialize → tools/list →
  * tools/call), not the handlers in isolation.
  *
- * A null DB is used: the covered tool call (`verify_claim`, still a Plan 03 W6 deferred seam)
- * raises `NotImplementedError` before touching the DB, and `tools/list` never queries. DB-backed
- * tool calls (`get_entity`, `search_evidence`, `get_delta`, …) are covered by the integration
+ * A null DB is used: the covered paths never reach the query layer — `initialize` and `tools/list`
+ * never query, and the unknown-tool call is rejected before any handler runs. DB-backed tool calls
+ * (`get_entity`, `search_evidence`, `get_delta`, `verify_claim`, …) are covered by the integration
  * verification against Neon, not here.
  */
 
@@ -57,19 +57,6 @@ describe('tools/list', () => {
     const { tools } = await client.listTools();
     const entity = tools.find((t) => t.name === 'get_entity');
     expect(entity?.inputSchema?.properties).toHaveProperty('name_or_id');
-    await client.close();
-  });
-});
-
-describe('tools/call — deferred seam (Plan 03 W6)', () => {
-  it('verify_claim returns an isError result carrying the not_implemented code', async () => {
-    const client = await connectClient();
-    const res = await client.callTool({
-      name: 'verify_claim',
-      arguments: { claim_text: 'Rust has version 1.96.0' },
-    });
-    expect(res.isError).toBe(true);
-    expect(res.structuredContent).toMatchObject({ code: 'not_implemented' });
     await client.close();
   });
 });

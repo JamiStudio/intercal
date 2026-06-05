@@ -2,16 +2,18 @@
  * The shared query-service layer. The REST API and the MCP server both call these — there is
  * one set of query semantics, never two.
  *
- * V1 status: `getEntity`, `getSources`, `getFreshness`, `searchEvidence`, and `getDelta` are real
- * reads against the canonical schema. `verifyClaim` requires contradiction reasoning owned by
- * Plan 03 W6 and raises `NotImplementedError` until then — an honest deferral, not a mock.
+ * V1 status: every V1 read — `getEntity`, `getSources`, `getFreshness`, `searchEvidence`,
+ * `getDelta`, and `verifyClaim` — is a real read against the canonical schema. The two synthesis
+ * bodies live in dedicated modules (`delta.ts`, `verify.ts`) and this file stays a thin dispatch so
+ * the REST and MCP surfaces call one set of semantics.
  */
 import type { components } from '@intercal/shared';
 import type { Db } from './db/client.js';
 import type { EntitiesTable } from './db/types.js';
 import { buildDelta, type DeltaParams } from './delta.js';
-import { NotFoundError, NotImplementedError } from './errors.js';
+import { NotFoundError } from './errors.js';
 import { mapClaim, mapEntity, mapRelationship, mapSourceDocument } from './mappers.js';
+import { buildVerification, type VerifyClaimParams } from './verify.js';
 
 type S = components['schemas'];
 
@@ -287,17 +289,21 @@ export function getDelta(db: Db, params: DeltaParams): Promise<S['DeltaResponse'
   return buildDelta(db, params);
 }
 
-export interface VerifyClaimParams {
-  claim_text: string;
-  as_of_date?: string;
-  token_budget?: number;
-}
+export type { VerifyClaimParams };
 
+/**
+ * Verify a free-text claim against the substrate: a deterministic, fully-cited verdict
+ * (supported / partially_supported / contradicted / unverified) with supporting and contradicting
+ * evidence, confidence, and point-in-time (`as_of_date`) bitemporal evaluation.
+ *
+ * The body lives in `verify.ts`; this stays a thin dispatch like the other query functions so the
+ * REST and MCP surfaces call one set of semantics. See `verify.ts` for the design rationale
+ * (deterministic evidence match + contradiction reasoning, point-in-time, token budget, citation
+ * and confidence derivation).
+ */
 export function verifyClaim(
-  _db: Db,
-  _params: VerifyClaimParams,
+  db: Db,
+  params: VerifyClaimParams,
 ): Promise<S['ClaimVerificationResponse']> {
-  throw new NotImplementedError(
-    'Plan 03 — verify_claim: evidence matching + contradiction reasoning for a free-text claim.',
-  );
+  return buildVerification(db, params);
 }

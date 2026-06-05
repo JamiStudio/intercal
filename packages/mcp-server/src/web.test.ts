@@ -3,8 +3,9 @@
  * returned Web `Response` is a valid JSON-RPC MCP response. This is the exact path the Vercel
  * `/api/mcp` route handler uses, so it proves the serverless mount works without a live server.
  *
- * Null DB: `initialize` and `tools/list` never query the DB, and `verify_claim` (a Plan 03 W6
- * deferred seam) raises `NotImplementedError` before touching it.
+ * Null DB: `initialize` and `tools/list` never query the DB, and the unknown-tool `tools/call` is
+ * rejected before any handler runs. DB-backed tool calls (incl. `verify_claim`, Plan 03 W6) are
+ * covered by the live Neon integration verification, not here.
  */
 
 import type { Db } from '@intercal/core';
@@ -82,8 +83,8 @@ describe('handleMcpRequest — tools/list', () => {
   });
 });
 
-describe('handleMcpRequest — tools/call deferred seam', () => {
-  it('verify_claim call yields a not_implemented tool error result', async () => {
+describe('handleMcpRequest — tools/call unknown tool', () => {
+  it('an unknown tool name yields an invalid_request tool error result (no DB access)', async () => {
     const res = await handleMcpRequest(
       nullDb,
       mcpRequest({
@@ -91,8 +92,8 @@ describe('handleMcpRequest — tools/call deferred seam', () => {
         id: 3,
         method: 'tools/call',
         params: {
-          name: 'verify_claim',
-          arguments: { claim_text: 'Rust has version 1.96.0' },
+          name: 'no_such_tool',
+          arguments: {},
         },
       }),
     );
@@ -100,6 +101,6 @@ describe('handleMcpRequest — tools/call deferred seam', () => {
     const body = await readJsonRpc(res);
     const result = body.result as { isError?: boolean; structuredContent?: { code?: string } };
     expect(result.isError).toBe(true);
-    expect(result.structuredContent?.code).toBe('not_implemented');
+    expect(result.structuredContent?.code).toBe('invalid_request');
   });
 });

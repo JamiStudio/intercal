@@ -37,8 +37,8 @@ const HANDLERS: Record<string, ToolFn> = {
  * Build a tool error result that preserves the structured error taxonomy. The query layer
  * throws `IntercalError` subclasses (`not_found`, `invalid_request`, `not_implemented`) — the
  * same codes the REST surface maps to HTTP status. MCP has no status code, so we surface the
- * code + message in the text content and any details, keeping the deferred W5/W6 seams
- * (`not_implemented`) clearly distinguishable from a real failure rather than a generic string.
+ * code + message in the text content and any details, keeping structured failures (`not_found`,
+ * `invalid_request`) clearly distinguishable from a real internal error rather than a generic string.
  */
 function toErrorResult(err: unknown): CallToolResult {
   if (err instanceof IntercalError) {
@@ -73,8 +73,10 @@ export function buildMcpServer(db: Db): Server {
       instructions:
         'Intercal is a provenance-backed temporal knowledge substrate. Tools return cited, ' +
         'freshness-aware facts traced to source evidence. get_delta returns a token-budgeted, ' +
-        'cited digest of what changed about a topic since a date. verify_claim is deferred ' +
-        '(returns a not_implemented error) until its contradiction-reasoning body ships.',
+        'cited digest of what changed about a topic since a date. verify_claim returns a ' +
+        'deterministic, fully-cited verdict (supported / partially_supported / contradicted / ' +
+        'unverified) for a free-text claim, with supporting and contradicting evidence, ' +
+        'confidence, and point-in-time (as_of_date) evaluation.',
     },
   );
 

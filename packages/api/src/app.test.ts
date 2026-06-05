@@ -6,11 +6,10 @@
  *
  * These tests use `null as unknown as Db` because every covered path either:
  *   a) fails Ajv validation before reaching the DB, or
- *   b) throws `NotImplementedError` before touching the DB (verify_claim, a Plan 03 W6 seam), or
- *   c) is served directly from the app without a DB call (/health, /openapi.json, notFound).
+ *   b) is served directly from the app without a DB call (/health, /openapi.json, notFound).
  *
- * get_delta is now DB-backed (Plan 03 W5); its success path is covered by the live Neon
- * integration verification, so only its validation (400) cases live here.
+ * get_delta and verify_claim are now DB-backed (Plan 03 W5 / W6); their success paths are covered by
+ * the live Neon integration verification, so only their validation (400) cases live here.
  *
  * Integration tests against a live DB belong in a separate fixture; do not add them here.
  */
@@ -220,7 +219,11 @@ describe('GET /v1/evidence', () => {
 });
 
 // ---------------------------------------------------------------------------
-// GET /v1/claims/verify — requires claim_text; body deferred to Plan 03 W6
+// GET /v1/claims/verify — requires claim_text (Plan 03 W6 body is DB-backed)
+//
+// The success path (valid params → 200 cited verdict) is DB-backed (Plan 03 W6) and is covered by
+// the live Neon integration verification, not this validation-only suite (null DB). Only validation
+// (400) cases — which fail Ajv before reaching the DB — live here.
 // ---------------------------------------------------------------------------
 
 describe('GET /v1/claims/verify', () => {
@@ -239,20 +242,6 @@ describe('GET /v1/claims/verify', () => {
     const details = body.details as Record<string, unknown>;
     const issues = details.issues as Array<Record<string, unknown>>;
     expect(issues[0]?.message).toMatch(/date-time/);
-  });
-
-  it('501 when params are valid (body deferred to Plan 03 W6)', async () => {
-    const { status, body } = await get('/v1/claims/verify?claim_text=Rust+has+version+1.96.0');
-    expect(status).toBe(501);
-    expect(body.code).toBe('not_implemented');
-  });
-
-  it('501 with optional as_of_date and token_budget', async () => {
-    const { status, body } = await get(
-      '/v1/claims/verify?claim_text=Rust+has+version+1.96.0&as_of_date=2026-01-01T00:00:00Z&token_budget=300',
-    );
-    expect(status).toBe(501);
-    expect(body.code).toBe('not_implemented');
   });
 
   it('400 when token_budget is not an integer', async () => {
@@ -387,12 +376,8 @@ describe('error shape', () => {
     expect(issues[0]).toHaveProperty('message');
   });
 
-  it('501 errors include code and message', async () => {
-    // verify_claim is still the W6 deferred seam (raises NotImplementedError before the DB);
-    // get_delta is now DB-backed (W5), so it is no longer a null-DB 501 path.
-    const { body } = await get('/v1/claims/verify?claim_text=Rust+has+version+1.96.0');
-    expect(body).toHaveProperty('code', 'not_implemented');
-    expect(body).toHaveProperty('message');
-    expect(typeof body.message).toBe('string');
-  });
+  // Note: there is no longer a null-DB 501 path on the contract surface — get_delta (W5) and
+  // verify_claim (W6) are both DB-backed now. The `not_implemented` (501) error MAPPING is still
+  // exercised by the unit tests for `NotImplementedError` in @intercal/core and by the SDK error
+  // taxonomy; the HTTP status-mapping table itself is covered by the 400/404 cases above.
 });

@@ -29,12 +29,14 @@ flow, decisions, and how to operate Intercal safely.
 
 ## Operations (durable)
 
+- [`operations/resource-budget.md`](operations/resource-budget.md) — free/credit allowances per service, consumption plan, throttle knobs, scale triggers.
 - `operations/` — development setup, deployment, backups, source policy, observability,
   review workflows, account setup (authored as the relevant roadmaps land).
 
 ## Roadmaps (active, dated)
 
-- [`roadmaps/`](roadmaps/) — active implementation plans. Completed plans retire to `_legacy/roadmaps/`.
+- [`roadmaps/2026-06-04-intercal-program.md`](roadmaps/2026-06-04-intercal-program.md) — **master program** (phases A–F); start here.
+- [`roadmaps/`](roadmaps/) — the dated implementation plans (00 reset, 01 foundation, 02–06 feature streams, 07 deploy/CD/auth/secrets). Completed plans retire to `_legacy/roadmaps/`.
 
 ## Research / reports (dated source material)
 

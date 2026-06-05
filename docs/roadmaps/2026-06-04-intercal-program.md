@@ -106,7 +106,13 @@ Key deliverables: architecture-parity audit; data-quality audit; **provider-swit
 docs parity; full verification ladder green; release readiness + changelog.
 Acceptance gate: no known foundational shortcuts; every adapter swap proven; full gate green in CI.
 
-## Cross-cutting Plan 07 — Deployment, CD, Auth & Secrets (new)
+> Cost discipline runs through every phase: see
+> [`../operations/resource-budget.md`](../operations/resource-budget.md) for per-service
+> allowances, cadences, and throttle knobs. Repo is public → GitHub Actions are free/unlimited;
+> the real budget is LLM inference (Vertex credits + Gemini daily), then Neon CU-hours / Upstash
+> commands / R2 ops.
+
+## Cross-cutting Plan 07 — Deployment, CD, Auth & Secrets (new) — [`2026-06-04-intercal-plan-07-deployment-cd-auth-secrets.md`](2026-06-04-intercal-plan-07-deployment-cd-auth-secrets.md)
 The connective tissue threaded through B/C/D:
 - Secret management: one source → fanned to local `.env`, Vercel env, GitHub Actions secrets,
   Cloud Run env (scriptable; partially automated already).

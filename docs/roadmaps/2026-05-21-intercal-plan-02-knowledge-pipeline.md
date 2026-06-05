@@ -2,7 +2,7 @@
 
 Date: 2026-05-21
 Aligned: 2026-06-04 to live stack
-Status: [~] Active — W1 complete (2026-06-04); W2 complete (2026-06-05)
+Status: [~] Active — W1 complete (2026-06-04); W2 complete (2026-06-05); W4 complete (2026-06-05)
 Source reports: `docs/research/2026-05-21-intercal-foundation-report.md`, `docs/research/2026-06-04-intercal-revisit-audit-and-dev-environment.md`, `docs/architecture/pipeline.md`, `docs/architecture/data-model.md`; decisions `docs/decisions/0001-foundation-stack.md`, `docs/decisions/0002-final-hosting-topology.md`
 Owner: Main orchestration agent
 Surface: ingestion, normalization, extraction, providers, embeddings, entity resolution, relationships, fact versions, orchestration
@@ -297,9 +297,11 @@ Suggested verification:
 
 Goal: Route model and embedding calls through replaceable providers.
 
+**Status: [x] Complete — 2026-06-05**
+
 Depends on:
 
-- [ ] Plan 01 provider-boundary docs and contracts.
+- [x] Plan 01 provider-boundary docs and contracts.
 
 Enables:
 
@@ -313,29 +315,44 @@ Repo guidance:
 
 Primary areas:
 
-- `services/extract`
-- `services/synthesize`
-- `packages/shared`
+- `services/shared` (ports + adapters + config + factory)
 - `docs/architecture/provider-boundaries.md`
 
 Implementation tasks:
 
-- [ ] Add provider interface, capability registry, and usage logging.
-- [ ] Add local/mock provider.
-- [ ] Add OpenAI-compatible adapter shape where useful.
-- [ ] Add Vertex AI adapter mode (via `google-genai` `vertexai=True`) as the primary LLM path behind `LlmPort`.
-- [ ] Add Gemini API key mode as the fallback LLM path (same adapter, different credentials).
-- [ ] Add Groq/Anthropic/OpenAI adapter hooks behind the port.
-- [ ] Add local fastembed/ONNX as the default embeddings path behind `EmbeddingsPort` (zero-cost, in-worker; bge-small 384-dim halfvec).
-- [ ] Add rate-limit and provider-error classification.
+- [x] `LlmPort` exists with `complete` + `extract_structured` methods and `LlmResponse` / error types.
+- [x] `EmbeddingsPort` exists with `model`, `dim`, `embed` and `EmbeddingsError`.
+- [x] `GeminiLlmAdapter` extended to support **Vertex AI mode** (`vertexai=True`, `project`, `location`)
+  via `google-genai` v2 SDK — same adapter class, two modes selected by config.
+  Primary = Vertex (yrka.io SA, ADC, trial credits); fallback = Gemini API key (postpay daily allowance).
+- [x] Gemini API key mode retained as `LLM_PROVIDER=gemini` fallback path.
+- [x] `LocalEmbeddingsAdapter` (fastembed/ONNX, `BAAI/bge-small-en-v1.5`, 384-dim) is the zero-cost
+  default behind `EmbeddingsPort`. Exposes `.model` + `.dim` for per-vector metadata recording.
+- [x] Groq (`GroqLlmAdapter`), Anthropic (`AnthropicLlmAdapter`), OpenAI (`OpenAILlmAdapter`) are
+  real port-conformant adapters; all implement `LlmPort`.
+- [x] `OpenAIEmbeddingsAdapter` is a real port-conformant adapter; implements `EmbeddingsPort`.
+- [x] `Settings` extended: `vertex_project`, `vertex_location`; `llm_provider` literal extended to
+  include `"vertex"`. `VERTEX_PROJECT` / `VERTEX_LOCATION` / `GOOGLE_APPLICATION_CREDENTIALS`
+  documented in `.env.example`.
+- [x] `factory.make_llm` routes `LLM_PROVIDER=vertex` to `GeminiLlmAdapter(vertexai=True, ...)`.
+- [x] 35 W4 unit tests in `services/shared/tests/test_w4_providers.py` — Settings, construction
+  (both modes), complete/extract_structured via mock, error cases, LlmPort/EmbeddingsPort structural
+  compliance. No live network required.
+- [x] Live verified (2026-06-05): Vertex AI `complete()` → text='OK' (7 in / 1 out tokens);
+  `extract_structured()` → `{'answer': 'yes'}`; fastembed `embed(2 texts)` → 2 × 384-dim vectors.
+  Provider: `gemini-2.5-flash` on `rich-wavelet-496206-h7` (`us-east4`), SA ADC.
+- [x] `provider-boundaries.md` updated with Vertex/Gemini dual-mode design and embeddings metadata rule.
 
 Exit criteria:
 
-- [ ] Provider can be swapped without changing extraction, embedding, or synthesis callers.
+- [x] Provider can be swapped without changing extraction, embedding, or synthesis callers.
+- [x] Vertex AI and Gemini API key modes both callable through the same `LlmPort` interface.
+- [x] All 157 service tests pass; `pnpm py:lint` + `pnpm py:typecheck` clean (0 errors).
 
 Suggested verification:
 
-- `uv run pytest services/*/tests -k provider`
+- `pnpm py:lint && pnpm py:typecheck && pnpm py:test`
+- `GOOGLE_APPLICATION_CREDENTIALS=<sa-key.json> LLM_PROVIDER=vertex VERTEX_PROJECT=<proj> uv run python scripts/dev/verify_w4_providers.py`
 
 ## Workstream 5: Embeddings And Hybrid Retrieval Indexes
 

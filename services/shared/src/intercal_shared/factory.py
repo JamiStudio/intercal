@@ -76,7 +76,26 @@ def make_embeddings(
 def make_llm(
     cfg: Settings,
 ) -> GeminiLlmAdapter | GroqLlmAdapter | AnthropicLlmAdapter | OpenAILlmAdapter:
-    """Return the configured LLM adapter."""
+    """Return the configured LLM adapter.
+
+    Provider selection via ``LLM_PROVIDER``:
+
+    - ``vertex`` — Vertex AI mode; requires ``VERTEX_PROJECT`` and ADC (e.g.
+      ``GOOGLE_APPLICATION_CREDENTIALS`` pointing at a service-account JSON key).
+      Primary per the program posture (yrka.io trial credits).
+    - ``gemini`` — Gemini API key mode; requires ``GEMINI_API_KEY``.  Fallback
+      when Vertex credits are exhausted or ADC is unavailable.
+    - ``groq`` / ``anthropic`` / ``openai`` — their respective API keys.
+    """
+    if cfg.llm_provider == "vertex":
+        from intercal_shared.adapters.llm_gemini import GeminiLlmAdapter
+
+        return GeminiLlmAdapter(
+            model=cfg.llm_model,
+            vertexai=True,
+            project=cfg.vertex_project,
+            location=cfg.vertex_location,
+        )
     if cfg.llm_provider == "gemini":
         from intercal_shared.adapters.llm_gemini import GeminiLlmAdapter
 

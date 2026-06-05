@@ -1,9 +1,24 @@
-"""Google Gemini LLM adapter (free-tier default: gemini-2.5-flash).
+"""Google Gemini / Vertex AI LLM adapter.
 
-Requires: `intercal-shared[llm-gemini]` (google-genai>=1.0.0) and GEMINI_API_KEY.
+Requires: ``intercal-shared[llm-gemini]`` (google-genai>=1.0.0).
 
-Uses the official google-genai SDK (v1.x, imports as ``google.genai``).
-Structured extraction uses JSON-mode generation_config.
+Two credential modes — same adapter class, selected at construction time:
+
+**Gemini API key mode** (``vertexai=False``, default):
+    Requires ``GEMINI_API_KEY``.  Free-tier daily limits apply.
+    ``Client(api_key=...)`` per the google-genai v2 SDK.
+
+**Vertex AI mode** (``vertexai=True``):
+    Uses Application Default Credentials (ADC) or an explicit service-account
+    key file.  Requires ``VERTEX_PROJECT`` and ``VERTEX_LOCATION``.
+    Primary provider per the program posture (yrka.io trial credits, ADC).
+    ``Client(vertexai=True, project=..., location=...)`` per the
+    google-genai v2 SDK (``project`` + ``location`` required for Vertex).
+
+Vertex model names are the same as the Gemini API names (``gemini-2.5-flash``
+etc.) — the SDK routes them correctly based on the ``vertexai`` flag.
+
+Structured extraction uses JSON-mode generation_config (``response_mime_type``).
 """
 
 from __future__ import annotations
@@ -18,35 +33,82 @@ _log = logging.getLogger(__name__)
 
 
 class GeminiLlmAdapter:
-    """LlmPort implementation backed by Google Gemini via google-genai (v1.x).
+    """LlmPort implementation backed by Google Gemini / Vertex AI via google-genai v2.
 
     Parameters
     ----------
     api_key:
-        Gemini API key.  A clear error is raised at construction time if absent.
+        Gemini API key for API-key mode.  Mutually exclusive with *vertexai=True*.
+        A clear error is raised at construction time if absent when
+        ``vertexai=False``.
     model:
-        Gemini model name, e.g. ``"gemini-2.5-flash"`` (free default).
+        Model identifier, e.g. ``"gemini-2.5-flash"`` (the same name works for
+        both Gemini API and Vertex AI modes).
+    vertexai:
+        If ``True`` the adapter uses Vertex AI mode.  ADC (or the JSON key file
+        at ``GOOGLE_APPLICATION_CREDENTIALS``) must be valid.
+        Requires *project* and *location*.
+    project:
+        GCP project ID.  Required when ``vertexai=True``.
+    location:
+        GCP region, e.g. ``"us-east4"``.  Required when ``vertexai=True``.
     """
 
-    def __init__(self, api_key: str, model: str = "gemini-2.5-flash") -> None:
-        if not api_key:
-            raise ValueError(
-                "GEMINI_API_KEY is required for the Gemini LLM adapter. "
-                "Set it in your .env or environment (GEMINI_API_KEY=...)."
-            )
+    def __init__(
+        self,
+        api_key: str = "",
+        model: str = "gemini-2.5-flash",
+        *,
+        vertexai: bool = False,
+        project: str = "",
+        location: str = "us-east4",
+    ) -> None:
         try:
-            # google-genai >= 1.0.0 imports as google.genai (not google.generativeai).
             import google.genai as genai  # type: ignore[import-untyped]
         except ImportError as exc:
             raise ImportError(
-                "google-genai is required for the Gemini LLM adapter. "
+                "google-genai is required for the Gemini/Vertex LLM adapter. "
                 "Install it with: pip install 'intercal-shared[llm-gemini]'"
             ) from exc
 
-        self._client = genai.Client(api_key=api_key)
+        if vertexai:
+            if not project:
+                raise ValueError(
+                    "VERTEX_PROJECT is required for Vertex AI mode. "
+                    "Set it in your .env (VERTEX_PROJECT=<gcp-project-id>)."
+                )
+            # ADC resolution order: GOOGLE_APPLICATION_CREDENTIALS env var,
+            # then gcloud application-default, then metadata server.
+            # Explicit SA key path is set via GOOGLE_APPLICATION_CREDENTIALS.
+            self._client = genai.Client(
+                vertexai=True,
+                project=project,
+                location=location,
+            )
+            _log.info(
+                "Gemini/Vertex LLM adapter initialised (model=%r, project=%r, location=%r)",
+                model,
+                project,
+                location,
+            )
+        else:
+            if not api_key:
+                raise ValueError(
+                    "GEMINI_API_KEY is required for the Gemini LLM adapter (API-key mode). "
+                    "Set it in your .env or environment (GEMINI_API_KEY=...). "
+                    "To use Vertex AI instead, set LLM_PROVIDER=vertex."
+                )
+            self._client = genai.Client(api_key=api_key)
+            _log.info("Gemini LLM adapter initialised (model=%r, mode=api-key)", model)
+
         self._genai = genai
         self._model = model
-        _log.info("Gemini LLM adapter initialised (model=%r)", model)
+        self._vertexai = vertexai
+
+    @property
+    def model(self) -> str:
+        """Model identifier used by this adapter."""
+        return self._model
 
     async def complete(
         self,
@@ -76,10 +138,29 @@ class GeminiLlmAdapter:
                 )
 
             response = await loop.run_in_executor(None, _sync)
-            text: str = response.text
-            return LlmResponse(text=text, model=self._model)
+            text: str = response.text or ""
+            # Surface token counts if the SDK populated usage_metadata.
+            usage = getattr(response, "usage_metadata", None)
+            input_tokens: int | None = (
+                getattr(usage, "prompt_token_count", None) if usage else None
+            )
+            output_tokens: int | None = (
+                getattr(usage, "candidates_token_count", None)
+                or getattr(usage, "total_token_count", None)
+                if usage
+                else None
+            )
+            return LlmResponse(
+                text=text,
+                model=self._model,
+                input_tokens=input_tokens,
+                output_tokens=output_tokens,
+            )
+        except LlmError:
+            raise
         except Exception as exc:
-            raise LlmError(f"Gemini completion failed: {exc}") from exc
+            mode = "Vertex" if self._vertexai else "Gemini"
+            raise LlmError(f"{mode} completion failed: {exc}") from exc
 
     async def extract_structured(
         self,
@@ -114,15 +195,18 @@ class GeminiLlmAdapter:
                 )
 
             response = await loop.run_in_executor(None, _sync)
-            raw = response.text.strip()
+            raw = (response.text or "").strip()
             try:
                 result: dict[str, Any] = json.loads(raw)
             except json.JSONDecodeError as parse_exc:
                 raise LlmExtractionError(
-                    f"Gemini returned non-JSON response: {raw[:200]!r}"
+                    f"Gemini/Vertex returned non-JSON response: {raw[:200]!r}"
                 ) from parse_exc
             return result
         except LlmExtractionError:
             raise
+        except LlmError:
+            raise
         except Exception as exc:
-            raise LlmError(f"Gemini structured extraction failed: {exc}") from exc
+            mode = "Vertex" if self._vertexai else "Gemini"
+            raise LlmError(f"{mode} structured extraction failed: {exc}") from exc

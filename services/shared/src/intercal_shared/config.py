@@ -76,13 +76,26 @@ class Settings(BaseSettings):
     )
 
     # ── LLM extraction / synthesis ────────────────────────────────────────────
-    llm_provider: Literal["gemini", "groq", "anthropic", "openai"] = Field(
+    llm_provider: Literal["vertex", "gemini", "groq", "anthropic", "openai"] = Field(
         default="gemini",
-        description="LLM adapter: 'gemini' (free default), 'groq', 'anthropic', 'openai'.",
+        description=(
+            "LLM adapter: 'vertex' (Vertex AI via ADC, primary), "
+            "'gemini' (API key, fallback), 'groq', 'anthropic', 'openai'."
+        ),
     )
     llm_model: str = Field(
         default="gemini-2.5-flash",
         description="Model name forwarded to the LLM adapter.",
+    )
+
+    # Vertex AI config (used when llm_provider='vertex')
+    vertex_project: str = Field(
+        default="",
+        description="GCP project ID for Vertex AI mode (VERTEX_PROJECT).",
+    )
+    vertex_location: str = Field(
+        default="us-east4",
+        description="GCP region for Vertex AI (VERTEX_LOCATION). Default: us-east4.",
     )
 
     # Provider API keys — optional here; adapters raise clearly when missing.

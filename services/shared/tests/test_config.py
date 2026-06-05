@@ -39,7 +39,7 @@ def test_settings_override_via_kwargs() -> None:
 
 
 def test_settings_accepts_all_llm_providers() -> None:
-    for provider in ("gemini", "groq", "anthropic", "openai"):
+    for provider in ("vertex", "gemini", "groq", "anthropic", "openai"):
         cfg = _isolated_settings(llm_provider=provider)
         assert cfg.llm_provider == provider
 

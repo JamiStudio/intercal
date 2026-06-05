@@ -219,6 +219,30 @@ Implementation tasks:
   W1-ingested Wikidata documents (Arabic and English), language detection (ar/en
   correct), chunks written to `document_chunks`, `normalized_at` + `chunk_count` set.
   Idempotent re-run: all 5 skipped, existing chunk rows preserved. Both passes: PASS.
+- [x] Audit pass (2026-06-05, second fresh context) fixed three correctness/cohesion
+  defects the first pass missed (all data-dependent, so the small-doc live run did not
+  surface them):
+  1. **Oversized chunks.** `chunk_text` emitted a single giant chunk for any document
+     with no sentence boundaries (boundary-free / minified text) or for a single
+     sentence longer than `chunk_size` — would blow past the embedding context window
+     (W5/W6). Added `_hard_split_segment`: oversized segments are split on whitespace
+     (hard char-cut for an oversized lone token) before windowing, preserving absolute
+     offsets. No chunk can now exceed `chunk_size` (+ a small join slack).
+  2. **Stale chunks on re-normalise.** A forced re-run (or a smaller `chunk_size`) that
+     produced fewer chunks left orphan `document_chunks` rows at higher indices
+     (`ON CONFLICT` only overwrites 0..n-1), corrupting `chunk_count` and the W3
+     extraction input. Added a `DELETE … WHERE chunk_index >= n` after the upsert and a
+     full `_clear_chunks` on the 0-chunk paths. Proven live: 7→1 chunks drops 6 orphans.
+  3. **JSON mis-routing.** `normalize_document` sniffed only the first 4 KB, so a valid
+     JSON document larger than 4 KB mis-parsed as `text/plain` and leaked raw JSON into
+     chunks; a bare scalar body was also mis-classified as JSON. W1 `ingest_source` now
+     persists the adapter's `content_type` into `source_documents.metadata` (deterministic
+     routing); the sniff fallback (`_sniff_content_type`) parses the whole body and only
+     accepts object/array JSON.
+- [x] +8 regression tests (122 service tests pass). Re-verified LIVE on
+  `br-still-water-ajmss6b6`: force re-normalise all 5 docs, `chunks_in_db ==
+  sum(chunk_count)`, idempotent re-run skips all, shrink-renormalise leaves no orphans.
+  Branch restored to consistent 5/5 state.
 
 Exit criteria:
 

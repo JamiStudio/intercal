@@ -250,6 +250,37 @@ def test_chunk_text_deterministic() -> None:
         assert a.char_offset_start == b.char_offset_start
 
 
+def test_chunk_text_boundary_free_text_is_hard_split() -> None:
+    """Text with no sentence terminators must still be split below chunk_size."""
+    text = ("word " * 1000).strip()  # ~4999 chars, no . ! ?
+    chunks = chunk_text(text, chunk_size=1500, chunk_overlap=200)
+    assert len(chunks) > 1
+    # Allow a small slack for the join space; nothing should be a single giant chunk.
+    assert all(len(c.chunk_text) <= 1500 + 5 for c in chunks)
+    indices = [c.chunk_index for c in chunks]
+    assert indices == list(range(len(chunks)))
+
+
+def test_chunk_text_single_giant_sentence_is_hard_split() -> None:
+    """A single sentence longer than chunk_size is split into multiple chunks."""
+    text = "x" * 3000 + ". " + "y" * 3000 + "."
+    chunks = chunk_text(text, chunk_size=1500, chunk_overlap=200)
+    assert len(chunks) > 1
+    assert all(len(c.chunk_text) <= 1500 + 5 for c in chunks)
+
+
+def test_chunk_text_oversized_single_token_hard_cut() -> None:
+    """One token with no whitespace must be hard-cut at the limit."""
+    text = "a" * 5000
+    chunks = chunk_text(text, chunk_size=1500, chunk_overlap=200)
+    assert len(chunks) >= 4
+    assert all(len(c.chunk_text) <= 1500 for c in chunks)
+    # Offsets remain monotonic and in range.
+    starts = [c.char_offset_start for c in chunks]
+    assert starts == sorted(starts)
+    assert all(c.char_offset_start < c.char_offset_end <= len(text) for c in chunks)
+
+
 def test_chunk_text_no_chunk_shorter_than_min_when_merged() -> None:
     """Trailing chunks shorter than MIN_CHUNK_SIZE should be merged into the prior chunk."""
     from intercal_ingest.normalizer import MIN_CHUNK_SIZE
@@ -517,3 +548,78 @@ async def test_normalize_document_json_sniffed_when_no_content_type_in_metadata(
         written_text = cleaned_text_updates[0].args[2]  # $2 in UPDATE ... SET cleaned_text = $2
         # Should contain the human-readable string values, not raw JSON braces.
         assert "Wikidata entity Q42" in written_text or "Douglas Adams" in written_text
+
+
+@pytest.mark.asyncio
+async def test_normalize_document_deletes_stale_chunks_on_renormalize() -> None:
+    """Re-normalising must delete chunk rows beyond the new chunk_count.
+
+    Otherwise a prior run that produced more chunks leaves orphans that corrupt
+    chunk_count and the W3 extraction input.
+    """
+    text = "Some document text here. " * 30
+    row = _doc_row(cleaned_text=text)
+    pool = _make_pool(row=row)
+    result = await normalize_document(
+        document_id=str(uuid.uuid4()), pool=pool, storage=None,
+        chunk_size=200, chunk_overlap=40,
+    )
+    n = int(result["chunk_count"])  # type: ignore[arg-type]
+    # A DELETE … chunk_index >= n must be issued to prune stale rows.
+    delete_calls = [
+        c for c in pool.execute.call_args_list
+        if c.args and "DELETE FROM document_chunks" in str(c.args[0])
+        and "chunk_index >= " in str(c.args[0])
+    ]
+    assert delete_calls, "expected a stale-chunk DELETE with chunk_index >= n"
+    assert delete_calls[0].args[2] == n  # the $2 bound to n_chunks
+
+
+@pytest.mark.asyncio
+async def test_normalize_document_empty_body_clears_chunks() -> None:
+    """A document that normalises to empty must clear any prior chunk rows."""
+    row = _doc_row(cleaned_text="   ")
+    pool = _make_pool(row=row)
+    await normalize_document(document_id=str(uuid.uuid4()), pool=pool, storage=None)
+    clear_calls = [
+        c for c in pool.execute.call_args_list
+        if c.args and "DELETE FROM document_chunks" in str(c.args[0])
+    ]
+    assert clear_calls, "expected a DELETE FROM document_chunks for the empty-body path"
+
+
+@pytest.mark.asyncio
+async def test_normalize_document_large_json_routed_via_full_body_sniff() -> None:
+    """A JSON document larger than 4 KB must still be detected as JSON.
+
+    Regression: sniffing only the first 4 KB mis-parses a large valid JSON
+    document as text/plain, leaking raw JSON syntax into chunks.
+    """
+    big_value = "Important release detail sentence. " * 200  # > 4 KB
+    payload = json.dumps({"title": "Big release", "body": big_value})
+    assert len(payload) > 4096
+    # No content_type in metadata — forces the sniff path.
+    row = _doc_row(cleaned_text=payload, metadata={"adapter": "github_releases_v1"})
+    pool = _make_pool(row=row)
+    result = await normalize_document(document_id=str(uuid.uuid4()), pool=pool, storage=None)
+    assert result["skipped"] is False
+    cleaned_text_updates = [
+        c for c in pool.execute.call_args_list
+        if c.args and "cleaned_text" in str(c.args[0])
+    ]
+    assert cleaned_text_updates
+    written = cleaned_text_updates[0].args[2]
+    # JSON syntax must NOT leak through; flattened text must be present.
+    assert '"title"' not in written
+    assert "{" not in written
+    assert "Important release detail sentence" in written
+
+
+@pytest.mark.asyncio
+async def test_normalize_document_bare_scalar_body_not_treated_as_json() -> None:
+    """A plain body that happens to be a number must route as text, not JSON."""
+    row = _doc_row(cleaned_text="42 is the answer to everything. " * 10)
+    pool = _make_pool(row=row)
+    result = await normalize_document(document_id=str(uuid.uuid4()), pool=pool, storage=None)
+    assert result["skipped"] is False
+    assert int(result["chunk_count"]) >= 1  # type: ignore[arg-type]

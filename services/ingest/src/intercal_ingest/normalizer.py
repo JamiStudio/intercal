@@ -307,6 +307,50 @@ def detect_language(text: str) -> str:
 # We match the position of the terminating whitespace so chunks land at natural breaks.
 _SENTENCE_END: re.Pattern[str] = re.compile(r"(?<=[.!?])\s+")
 
+# Whitespace run used as a soft break point when hard-splitting an oversized segment.
+_WHITESPACE_RUN: re.Pattern[str] = re.compile(r"\s+")
+
+
+def _hard_split_segment(
+    start: int, end: int, body: str, limit: int
+) -> list[tuple[int, int, str]]:
+    """Split one (start, end, body) segment that exceeds *limit* characters.
+
+    A single "sentence" can be longer than ``chunk_size`` — e.g. log-style or
+    minified content with no ``.!?`` boundaries.  Without this, such input would
+    collapse into one chunk far larger than the embedding model's context window.
+    We break on the last whitespace at or before *limit* (falling back to a hard
+    character cut when a single token itself exceeds *limit*), preserving absolute
+    character offsets so downstream evidence spans stay accurate.
+    """
+    if len(body) <= limit:
+        return [(start, end, body)]
+
+    pieces: list[tuple[int, int, str]] = []
+    offset = 0  # Offset within *body*.
+    n = len(body)
+    while offset < n:
+        window_end = min(offset + limit, n)
+        if window_end < n:
+            # Prefer to break at the last whitespace inside the window.
+            cut = body.rfind(" ", offset, window_end)
+            if cut <= offset:
+                # No usable whitespace — hard cut at the limit (oversized token).
+                cut = window_end
+        else:
+            cut = n
+        piece = body[offset:cut].strip()
+        if piece:
+            # Re-anchor offsets to the trimmed piece within the original text.
+            lead = len(body[offset:cut]) - len(body[offset:cut].lstrip())
+            piece_start = start + offset + lead
+            pieces.append((piece_start, piece_start + len(piece), piece))
+        offset = cut
+        # Skip the whitespace we broke on so the next piece starts cleanly.
+        while offset < n and body[offset] == " ":
+            offset += 1
+    return pieces or [(start, end, body)]
+
 
 def chunk_text(
     text: str,
@@ -361,21 +405,15 @@ def chunk_text(
         idx = text.find(seg, pos)
         if idx == -1:
             idx = pos  # Fallback — should not happen.
-        sentences.append((idx, idx + len(seg), seg))
+        # Hard-split any single segment longer than chunk_size so no chunk can
+        # exceed the budget (boundary-free or minified content, giant sentences).
+        sentences.extend(_hard_split_segment(idx, idx + len(seg), seg, chunk_size))
         pos = idx + len(seg)
 
     if not sentences:
-        # No sentence boundaries found — emit as a single chunk.
-        return [
-            ChunkResult(
-                chunk_index=0,
-                chunk_text=text,
-                char_offset_start=0,
-                char_offset_end=len(text),
-                token_count_estimate=max(1, len(text) // 4),
-                metadata={"strategy": "single", "chunk_size": chunk_size, "chunk_overlap": 0},
-            )
-        ]
+        # Defensive: text was all whitespace after splitting (already handled
+        # by the strip()/empty guard above, but keep the path total).
+        return []
 
     chunks: list[ChunkResult] = []
     chunk_index = 0

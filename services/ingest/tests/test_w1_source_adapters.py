@@ -677,6 +677,72 @@ async def test_ingest_source_success_with_fake_adapter() -> None:
 
 
 @pytest.mark.asyncio
+async def test_ingest_source_persists_content_type_in_metadata() -> None:
+    """The adapter's content_type must be written into source_documents.metadata
+    so W2 normalisation can route deterministically without re-sniffing."""
+    import json as _json
+
+    import httpx
+    from intercal_shared.source_registry import SourceRegistry
+
+    source_id = uuid.uuid4()
+    row = _make_source_row(source_id, adapter_name="wikidata_changes_v1")
+
+    insert_args: list[tuple[Any, ...]] = []
+    pool = MagicMock()
+
+    async def fake_fetchrow(query: str, *args: Any) -> Any:
+        if "FROM sources" in query:
+            return row
+        return None
+
+    async def fake_fetchval(query: str, *args: Any) -> Any:
+        if "INSERT INTO ingestion_runs" in query:
+            return uuid.uuid4()
+        if "INSERT INTO source_documents" in query:
+            insert_args.append(args)
+            return uuid.uuid4()
+        return None
+
+    async def fake_execute(query: str, *args: Any) -> str:
+        return "OK"
+
+    async def fake_fetch(query: str, *args: Any) -> list[Any]:
+        return []
+
+    pool.fetchrow = AsyncMock(side_effect=fake_fetchrow)
+    pool.fetchval = AsyncMock(side_effect=fake_fetchval)
+    pool.execute = AsyncMock(side_effect=fake_execute)
+    pool.fetch = AsyncMock(side_effect=fake_fetch)
+
+    api_response = {
+        "query": {
+            "recentchanges": [
+                {
+                    "rcid": 999, "revid": 9999, "title": "Q1", "ns": 0,
+                    "type": "edit", "timestamp": "2026-06-04T00:00:00Z",
+                }
+            ]
+        }
+    }
+    transport = httpx.MockTransport(lambda req: httpx.Response(200, json=api_response))
+    client = httpx.AsyncClient(transport=transport)
+    reg = SourceRegistry()
+    reg.register_all_defaults()
+
+    await ingest_source(
+        source_id=str(source_id), pool=pool, storage=None,
+        http_client=client, max_documents=5, registry=reg,
+    )
+    await client.aclose()
+
+    assert insert_args, "expected an INSERT INTO source_documents"
+    metadata_json = insert_args[0][-1]  # last positional arg is the metadata JSON
+    metadata = _json.loads(metadata_json)
+    assert metadata.get("content_type") == "application/json"
+
+
+@pytest.mark.asyncio
 async def test_ingest_source_stores_raw_and_records_storage_key() -> None:
     """For new docs with storage + redistribution, raw bytes are stored and the
     resulting key is written back to source_documents.raw_storage_key."""

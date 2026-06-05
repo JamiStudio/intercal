@@ -160,6 +160,12 @@ async def ingest_source(
         ):
             counters["fetched"] += 1
             content_hash = _sha256(doc.content)
+            # Persist the adapter's content_type into document metadata so W2
+            # normalisation routes deterministically (JSON vs HTML vs text)
+            # without re-sniffing the body.
+            doc_metadata = dict(doc.metadata)
+            if doc.content_type and "content_type" not in doc_metadata:
+                doc_metadata["content_type"] = doc.content_type
             cleaned_text = (
                 # For citation_only sources we don't persist full text;
                 # store None and let normalization decide later (W2).
@@ -203,7 +209,7 @@ async def ingest_source(
                     _infer_document_type(doc),
                     redistribution_allowed,
                     citation_only,
-                    json.dumps(dict(doc.metadata)),
+                    json.dumps(doc_metadata),
                 )
             except Exception as db_exc:
                 _log.warning(
@@ -417,6 +423,7 @@ async def normalize_document(
             "normalize_document: document %s has no body text; marking normalised with 0 chunks",
             document_id,
         )
+        await _clear_chunks(pool, doc_id)
         await pool.execute(
             "UPDATE source_documents "
             "SET normalized_at = now(), chunk_count = 0 "
@@ -426,12 +433,10 @@ async def normalize_document(
         return {"skipped": False, "chunk_count": 0, "language": row["language"], "clean_chars": 0}
 
     # ── 4. Normalise text ─────────────────────────────────────────────────────
-    # Determine content_type from metadata if set by the adapter.
-    # If not set, sniff by trying json.loads — adapters that emit JSON (e.g.
-    # wikidata_changes_v1) do set content_type on the RawDocument object but the
-    # W1 ingest_source job does not propagate it into source_documents.metadata.
-    # JSON sniffing here avoids changing the W1 surface while still routing JSON
-    # documents correctly through the JSON flattening path.
+    # Determine content_type.  W1 adapters set ``content_type`` on the RawDocument
+    # and ``ingest_source`` now persists it into ``source_documents.metadata``, so
+    # routing is normally deterministic.  Sniffing is the fallback for legacy rows
+    # ingested before that write-back existed.
     meta_raw = row["metadata"]
     meta: dict[str, object] = (
         dict(meta_raw)
@@ -444,12 +449,7 @@ async def normalize_document(
     if raw_content_type:
         content_type: str = raw_content_type
     else:
-        # Sniff: try JSON parse on the first 4 KB for efficiency.
-        try:
-            json.loads(raw_body[:4096])
-            content_type = "application/json"
-        except (json.JSONDecodeError, ValueError):
-            content_type = "text/plain"
+        content_type = _sniff_content_type(raw_body)
 
     clean_text = normalize_text(raw_body, content_type=content_type)
     if not clean_text.strip():
@@ -457,6 +457,7 @@ async def normalize_document(
             "normalize_document: document %s normalised to empty string; 0 chunks",
             document_id,
         )
+        await _clear_chunks(pool, doc_id)
         await pool.execute(
             "UPDATE source_documents "
             "SET normalized_at = now(), chunk_count = 0 "
@@ -515,6 +516,16 @@ async def normalize_document(
             c.token_count_estimate,
             json.dumps(c.metadata),
         )
+
+    # Delete any stale chunks left over from a prior run that produced more
+    # chunks than this one (re-normalise / force / changed chunk_size).  Without
+    # this, ON CONFLICT only overwrites indices 0..n-1 and orphan rows with a
+    # higher index survive — corrupting chunk_count and the W3 extraction input.
+    await pool.execute(
+        "DELETE FROM document_chunks WHERE document_id = $1 AND chunk_index >= $2",
+        doc_id,
+        n_chunks,
+    )
 
     # ── 7. Mark normalised ────────────────────────────────────────────────────
     await pool.execute(
@@ -663,6 +674,30 @@ async def cleanup_expired_cache(
 def _sha256(data: bytes) -> str:
     """Return the SHA-256 hex digest of *data* (used for content-hashing documents)."""
     return hashlib.sha256(data).hexdigest()
+
+
+async def _clear_chunks(pool: Any, doc_id: uuid.UUID) -> None:
+    """Delete all document_chunks for *doc_id* (used by the 0-chunk paths)."""
+    await pool.execute("DELETE FROM document_chunks WHERE document_id = $1", doc_id)
+
+
+def _sniff_content_type(body: str) -> str:
+    """Best-effort content-type detection for documents lacking a stored type.
+
+    Returns ``"application/json"`` only when the *whole* body parses as a JSON
+    object or array (a truncated prefix would mis-parse a large valid document,
+    and a bare scalar like ``"42"`` is not a JSON document).  Otherwise falls
+    back to ``"text/plain"``; ``normalize_text`` still HTML-strips plain text
+    defensively via its unknown-type path when needed.
+    """
+    stripped = body.lstrip()
+    if not stripped or stripped[0] not in "{[":
+        return "text/plain"
+    try:
+        parsed = json.loads(body)
+    except (json.JSONDecodeError, ValueError):
+        return "text/plain"
+    return "application/json" if isinstance(parsed, (dict, list)) else "text/plain"
 
 
 def _parse_timestamp(value: str | None) -> _dt.datetime | None:

@@ -1,14 +1,28 @@
 # Agent-Facing Product Surface Implementation Plan
 
 Date: 2026-05-21
+Aligned: 2026-06-04 to live stack
 Status: [ ] Active draft
-Source reports: `docs/research/2026-05-21-intercal-foundation-report.md`, `docs/architecture/mcp-api.md`, `docs/architecture/provider-boundaries.md`
+Source reports: `docs/research/2026-05-21-intercal-foundation-report.md`, `docs/research/2026-06-04-intercal-revisit-audit-and-dev-environment.md`, `docs/architecture/mcp-api.md`, `docs/architecture/provider-boundaries.md`; decisions `docs/decisions/0001-foundation-stack.md`, `docs/decisions/0002-final-hosting-topology.md`
 Owner: Main orchestration agent
 Surface: query services, REST API, MCP server, SDK, token-budgeted digests, evidence search, claim verification, freshness
 
 ## Purpose
 
 Expose Intercal's temporal knowledge through stable agent-facing contracts. This plan owns the shared query layer, REST API, MCP tools, SDK, digest assembly, claim verification, freshness/coverage reporting, and fixture-backed agent behavior.
+
+## Live Alignment (2026-06-04)
+
+This plan is **Phase C** of the master program (`docs/roadmaps/2026-06-04-intercal-program.md`). The app is already live at `lntercal.vercel.app` (Next.js + Hono on Vercel reading Neon). The V1 read tools `get_entity`, `get_sources`, `get_freshness`, and `search_evidence` are implemented; `get_delta` and `verify_claim` are real seams with deferred bodies (`NotImplementedError`) — implementing those two query bodies is the core of this plan.
+
+Concrete providers and topology (decisions `0001`/`0002`):
+- **MCP:** mounted at `/api/mcp` on Vercel, stateless Streamable HTTP transport (OAuth 2.1 resource-server auth). Stdio remains available for local use. Agents connect to one URL: `lntercal.vercel.app/api/mcp`.
+- **REST:** live at `/api/v1/*` on the same Vercel project.
+- **DB:** Neon direct — no local Docker in the maintainers' flow. DB checks run against `DATABASE_URL` (a Neon branch).
+- **LLM synthesis (digests/verify):** Vertex AI (yrka.io SA / ADC) primary behind `LlmPort`; Gemini API key fallback.
+- **Embeddings (evidence search):** local fastembed default behind `EmbeddingsPort`.
+
+See also: `docs/decisions/0001-foundation-stack.md`, `docs/decisions/0002-final-hosting-topology.md`, `docs/operations/resource-budget.md`, `docs/roadmaps/2026-06-04-intercal-program.md`.
 
 ## Status Legend
 
@@ -121,12 +135,12 @@ Primary areas:
 
 Implementation tasks:
 
-- [ ] Add `GET /delta`.
-- [ ] Add `GET /entities/:id`.
-- [ ] Add `GET /search/evidence`.
-- [ ] Add `POST /claims/verify`.
-- [ ] Add `GET /sources`.
-- [ ] Add `GET /freshness`.
+- [ ] Implement `GET /delta` body (deferred stub; this plan's core deliverable alongside `verify_claim`).
+- [ ] Add `GET /entities/:id` (already partially wired via live `get_entity`; confirm contract-valid).
+- [ ] Add `GET /search/evidence` (already partially wired; confirm contract-valid).
+- [ ] Implement `POST /claims/verify` body (deferred stub; this plan's core deliverable).
+- [ ] Add `GET /sources` (already partially wired; confirm contract-valid).
+- [ ] Add `GET /freshness` (already partially wired; confirm contract-valid).
 - [ ] Add health/status endpoints.
 - [ ] Add pagination, error envelopes, and rate-limit hooks.
 
@@ -141,7 +155,7 @@ Suggested verification:
 
 ## Workstream 3: MCP Server
 
-Goal: Expose the V1 read surface as agent-native MCP tools.
+Goal: Expose the V1 read surface as agent-native MCP tools via the live `/api/mcp` mount.
 
 Depends on:
 
@@ -153,6 +167,8 @@ Enables:
 
 Repo guidance:
 
+- MCP is mounted at `/api/mcp` on Vercel (stateless Streamable HTTP). Auth = OAuth 2.1 resource-server. Stdio remains for local dev.
+- `get_entity`, `get_sources`, `get_freshness`, and `search_evidence` are already implemented; `get_delta` and `verify_claim` are the two deferred bodies this plan must implement.
 - MCP outputs must remain compact, cited, and token-budget aware.
 
 Primary areas:
@@ -163,13 +179,10 @@ Primary areas:
 
 Implementation tasks:
 
-- [ ] Add `get_delta`.
-- [ ] Add `get_entity`.
-- [ ] Add `search_evidence`.
-- [ ] Add `verify_claim`.
-- [ ] Add `get_sources`.
-- [ ] Add `get_freshness`.
-- [ ] Add MCP schema snapshots.
+- [ ] Implement `get_delta` body (token-budgeted digest over changed claims/entities since a date, via LLM port Vertex primary + Gemini fallback, with citations + freshness preserved).
+- [ ] Implement `verify_claim` body (evidence match + contradiction reasoning, verdict + confidence + evidence + caveats).
+- [ ] Confirm `get_entity`, `search_evidence`, `get_sources`, `get_freshness` are wired and contract-valid (already implemented; verify and update snapshot).
+- [ ] Add MCP schema snapshots for full V1 tool surface.
 
 Exit criteria:
 

@@ -1,14 +1,28 @@
 # Interactive Knowledge Experience Implementation Plan
 
 Date: 2026-05-21
+Aligned: 2026-06-04 to live stack
 Status: [ ] Active draft
-Source reports: `docs/research/2026-05-21-intercal-foundation-report.md`, Plans 01-05 closeout notes, durable API/MCP/query docs
+Source reports: `docs/research/2026-05-21-intercal-foundation-report.md`, `docs/research/2026-06-04-intercal-revisit-audit-and-dev-environment.md`, Plans 01-05 closeout notes, durable API/MCP/query docs; decisions `docs/decisions/0001-foundation-stack.md`, `docs/decisions/0002-final-hosting-topology.md`
 Owner: Main orchestration agent
 Surface: read-only public knowledge experience, graph/timeline explorer, briefing/search interface, evidence views, source coverage, subscriptions, feedback/reporting, operator review surfaces
 
 ## Purpose
 
 Build the complete read-only human experience for Intercal's temporal knowledge graph after the backend systems are fully green. This plan owns every user-facing surface needed to explore, verify, compare, subscribe, and report feedback on Intercal knowledge without creating a second source of truth or allowing public graph mutation.
+
+## Live Alignment (2026-06-04)
+
+This plan is **Phase E** of the master program (`docs/roadmaps/2026-06-04-intercal-program.md`). It deploys onto the already-live Vercel dashboard (`lntercal.vercel.app`), extending `packages/dashboard` (Next.js 16 App Router + React 19 + Tailwind v4 + shadcn/ui) which is already deployed and reading from Neon via the SDK server-side.
+
+Concrete topology (decisions `0001`/`0002`):
+- **Frontend host:** Vercel — the dashboard is already live; this plan adds pages and routes to the existing deployed project. No new host needed.
+- **Data access:** via `@intercal/sdk` server-side (REST at `/api/v1/*`); no UI-only data model.
+- **DB:** Neon direct. No local Docker; `docker compose` is optional self-host.
+- **LLM (briefings):** digests via the same LLM port used by the query layer (Vertex AI primary + Gemini fallback) — no new synthesis path.
+- **Auth:** API keys (REST) + OAuth 2.1 (MCP at `/api/mcp`); operator/admin surfaces enforce auth.
+
+See also: `docs/decisions/0001-foundation-stack.md`, `docs/decisions/0002-final-hosting-topology.md`, `docs/operations/resource-budget.md`, `docs/roadmaps/2026-06-04-intercal-program.md`.
 
 ## Status Legend
 
@@ -43,7 +57,7 @@ Build the complete read-only human experience for Intercal's temporal knowledge 
 
 ## Repo Guidance
 
-- UI surfaces belong under `packages/dashboard` or the eventual documented frontend package.
+- UI surfaces belong under `packages/dashboard` (Next.js 16 App Router, React 19, Tailwind v4, shadcn/ui — already deployed on Vercel).
 - Shared route/query services should reuse `packages/api`, `packages/sdk`, and `packages/shared` contracts.
 - Use full frontend verification including browser checks when a real app exists.
 - Keep UI claims evidence-linked.

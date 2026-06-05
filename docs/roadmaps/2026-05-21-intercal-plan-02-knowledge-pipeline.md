@@ -1,14 +1,30 @@
 # Knowledge Pipeline Implementation Plan
 
 Date: 2026-05-21
+Aligned: 2026-06-04 to live stack
 Status: [ ] Active draft
-Source reports: `docs/research/2026-05-21-intercal-foundation-report.md`, `docs/architecture/pipeline.md`, `docs/architecture/data-model.md`
+Source reports: `docs/research/2026-05-21-intercal-foundation-report.md`, `docs/research/2026-06-04-intercal-revisit-audit-and-dev-environment.md`, `docs/architecture/pipeline.md`, `docs/architecture/data-model.md`; decisions `docs/decisions/0001-foundation-stack.md`, `docs/decisions/0002-final-hosting-topology.md`
 Owner: Main orchestration agent
 Surface: ingestion, normalization, extraction, providers, embeddings, entity resolution, relationships, fact versions, orchestration
 
 ## Purpose
 
 Build the complete source-to-fact pipeline. This plan owns how documents enter Intercal, become validated claims, resolve into canonical entities, generate embeddings, derive relationships, and produce append-only bitemporal fact versions.
+
+## Live Alignment (2026-06-04)
+
+This plan is **Phase B** of the master program (`docs/roadmaps/2026-06-04-intercal-program.md`). It builds on the live substrate: Neon (Postgres 18 + pgvector 0.8.1) is the running DB; the full schema and seed vocabularies are already applied; all pipeline service seams exist with `NotImplementedError` bodies awaiting this plan.
+
+Concrete providers behind their ports (decisions `0001`/`0002`):
+- **DB:** Neon. Dev uses a Neon branch. Migrations run via `node scripts/dev/migrate.mjs --seed` against `DATABASE_URL`. No local Docker in the maintainers' flow; `docker compose` is an optional self-host path only.
+- **Storage:** Cloudflare R2 (S3 API) behind `StoragePort`; GCS is the zero-friction fallback while R2 token is pending — swap is a config change.
+- **Queue/cache:** Upstash Redis (TCP) behind `QueuePort`; `pgmq` Postgres fallback.
+- **Embeddings:** local fastembed/ONNX (bge-small, 384-dim, halfvec) behind `EmbeddingsPort` — zero-cost, in-worker default.
+- **LLM:** Vertex AI (yrka.io SA / ADC) primary behind `LlmPort`; Gemini API key (postpay) fallback; Groq/Anthropic/OpenAI also behind the port.
+- **Workers:** GitHub Actions scheduled workflows (public repo, free) for batch; Cloud Run Jobs (`rich-wavelet-496206-h7`) for on-demand/heavy. Same `python -m intercal_<svc> <job>` CLIs on both.
+- **Worker cadence and resource budget:** ingestion runs on a schedule, not continuously. Batch sizes, LLM call volume, and embedding workloads must respect `docs/operations/resource-budget.md` (free-tier allowances; embeddings local/free; LLM via Vertex with daily cap + Gemini fallback; R2/Upstash within free limits).
+
+See also: `docs/decisions/0001-foundation-stack.md`, `docs/decisions/0002-final-hosting-topology.md`, `docs/operations/resource-budget.md`, `docs/roadmaps/2026-06-04-intercal-program.md`.
 
 ## Status Legend
 
@@ -22,7 +38,7 @@ Build the complete source-to-fact pipeline. This plan owns how documents enter I
 - Plan 01 must provide migrations, source tables, claim tables, embedding tables, relationship types, fact versions, contracts, and local verification.
 - The foundation report requires claims to be first-class and relationships/fact versions to be derived from claims.
 - The foundation report requires embeddings as production capability with provider/model metadata.
-- Vertex and Azure credentials may be available for live provider verification, but tests must work without live keys.
+- Vertex AI (yrka.io SA / ADC) is the primary LLM provider; Gemini API key (postpay) is the fallback. Tests must work without live keys; live Vertex smoke tests are optional verification when ADC is configured.
 - Public answers must preserve source evidence and source policy constraints.
 
 ## Locked Decisions
@@ -48,7 +64,7 @@ Build the complete source-to-fact pipeline. This plan owns how documents enter I
 - Shared payloads must use contracts from Plan 01.
 - Schema changes need migration IDs, data-model doc updates, and DB verification.
 - Provider integration must include mock/local providers.
-- Windows-native commands remain the local verification path.
+- Windows-native commands remain the local verification path. DB verification runs against `DATABASE_URL` (a Neon branch) — not a local Docker database.
 
 ## Target Product Shape
 
@@ -95,7 +111,7 @@ Exit criteria:
 Suggested verification:
 
 - `uv run pytest services/ingest/tests`
-- `pnpm db:migrate:seeded`
+- `pnpm db:migrate:seeded` (runs against `DATABASE_URL` — a Neon branch)
 
 ## Workstream 2: Document Normalization And Chunking
 
@@ -191,7 +207,7 @@ Enables:
 
 Repo guidance:
 
-- Live Vertex and Azure calls are optional verification, not required test dependencies.
+- Live Vertex AI calls are optional verification, not required test dependencies. Tests must work with mock/local providers.
 
 Primary areas:
 
@@ -205,8 +221,10 @@ Implementation tasks:
 - [ ] Add provider interface, capability registry, and usage logging.
 - [ ] Add local/mock provider.
 - [ ] Add OpenAI-compatible adapter shape where useful.
-- [ ] Add Google Vertex adapter hook.
-- [ ] Add Azure adapter hook if supported by available credentials.
+- [ ] Add Vertex AI adapter mode (via `google-genai` `vertexai=True`) as the primary LLM path behind `LlmPort`.
+- [ ] Add Gemini API key mode as the fallback LLM path (same adapter, different credentials).
+- [ ] Add Groq/Anthropic/OpenAI adapter hooks behind the port.
+- [ ] Add local fastembed/ONNX as the default embeddings path behind `EmbeddingsPort` (zero-cost, in-worker; bge-small 384-dim halfvec).
 - [ ] Add rate-limit and provider-error classification.
 
 Exit criteria:
@@ -341,7 +359,7 @@ Exit criteria:
 Suggested verification:
 
 - `uv run pytest services/resolve/tests services/synthesize/tests`
-- `pnpm db:migrate:seeded`
+- `pnpm db:migrate:seeded` (runs against `DATABASE_URL` — a Neon branch)
 
 ## Workstream 8: Pipeline Orchestration
 
@@ -359,6 +377,7 @@ Enables:
 Repo guidance:
 
 - Jobs must be idempotent and safe to retry.
+- Worker cadence must respect `docs/operations/resource-budget.md`. Ingestion runs on a schedule (GitHub Actions scheduled workflows), not continuously. Heavy or on-demand jobs run as Cloud Run Jobs. Worker CLIs are portable: `python -m intercal_<svc> <job>` runs unchanged on both.
 
 Primary areas:
 
@@ -370,9 +389,9 @@ Primary areas:
 
 Implementation tasks:
 
-- [ ] Add CLI pipeline runner.
+- [ ] Add CLI pipeline runner (`python -m intercal_<svc> <job>` entrypoints for each service).
 - [ ] Add job registry and local scheduler.
-- [ ] Add queue abstraction.
+- [ ] Add queue abstraction backed by Upstash Redis (TCP) behind `QueuePort`; `pgmq` as Postgres fallback.
 - [ ] Add retry, quarantine, and dead-letter records.
 - [ ] Add run health summaries.
 
@@ -398,7 +417,7 @@ Suggested verification:
 - `pnpm db:migrate:seeded`
 - `pnpm contracts:check`
 - `uv run intercal-pipeline run --fixture`
-- Optional live provider smoke tests for Vertex/Azure when credentials are configured.
+- Optional live provider smoke tests for Vertex AI (ADC configured) and Gemini API key fallback when credentials are configured.
 - Update architecture docs, operations docs, provider docs, and this plan's implementation notes.
 - Add changelog fragment for schema, pipeline, provider, and operations changes.
 - Stop local services or document why they remain running.

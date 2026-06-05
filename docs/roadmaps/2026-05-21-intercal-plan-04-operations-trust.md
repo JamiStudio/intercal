@@ -1,14 +1,29 @@
 # Operations, Trust, And Review Loops Implementation Plan
 
 Date: 2026-05-21
+Aligned: 2026-06-04 to live stack
 Status: [ ] Active draft
-Source reports: `docs/research/2026-05-21-intercal-foundation-report.md`, `docs/architecture/deployment-topology.md`, `docs/architecture/provider-boundaries.md`
+Source reports: `docs/research/2026-05-21-intercal-foundation-report.md`, `docs/research/2026-06-04-intercal-revisit-audit-and-dev-environment.md`, `docs/architecture/deployment-topology.md`, `docs/architecture/provider-boundaries.md`; decisions `docs/decisions/0001-foundation-stack.md`, `docs/decisions/0002-final-hosting-topology.md`
 Owner: Main orchestration agent
 Surface: auth, rate limits, source policy, audit events, subscriptions, feedback/review records, observability, deployment, account setup
 
 ## Purpose
 
 Build the operational and trust systems required to run Intercal as a reliable open knowledge service. This plan owns access control, source policy, auditability, subscriptions, bounded feedback/review loops, observability, deployment paths, backups, and one-time account/CLI setup runbooks.
+
+## Live Alignment (2026-06-04)
+
+This plan is **Phase D** of the master program (jointly with Plan 07 which owns deploy/CD/secret-fan-out; see `docs/roadmaps/2026-06-04-intercal-program.md`). The app and API are already live on Vercel reading Neon.
+
+Concrete providers and topology (decisions `0001`/`0002`):
+- **Auth:** API keys (hashed + scoped) for REST; OAuth 2.1 resource-server for MCP at `/api/mcp`. Plan 07 owns the deploy/CD/secret-fan-out automation (one source fanned to local `.env`, Vercel env, GitHub Actions secrets, Cloud Run env).
+- **DB:** Neon direct. No local Docker in the maintainers' flow; `docker compose` is optional self-host. Ops DB checks run against `DATABASE_URL` (a Neon branch or prod).
+- **Queue/cache:** Upstash Redis (TCP) behind `QueuePort`.
+- **Storage:** Cloudflare R2 (S3 API) behind `StoragePort`.
+- **Workers/scheduler:** GitHub Actions scheduled workflows (batch) + Cloud Run Jobs (on-demand). Cadence respects `docs/operations/resource-budget.md`.
+- **Observability:** must include per-provider consumption vs. the free-tier budget (Neon, R2, Upstash, Vertex AI / Gemini daily cap, GitHub Actions minutes) in addition to source/run health, latency/error, and freshness metrics.
+
+See also: `docs/decisions/0001-foundation-stack.md`, `docs/decisions/0002-final-hosting-topology.md`, `docs/operations/resource-budget.md`, `docs/roadmaps/2026-06-04-intercal-program.md`.
 
 ## Status Legend
 
@@ -23,7 +38,7 @@ Build the operational and trust systems required to run Intercal as a reliable o
 - The foundation report requires source storage/citation/redistribution policy.
 - Public user-facing surfaces remain read-only for canonical graph data.
 - Users may submit feedback or flags, but public users must not directly mutate sources, claims, entities, merges, or relationships.
-- Deployment must support local, low-cost VPS, and managed production paths.
+- Deployment must support the decided topology: app+MCP on Vercel, pipeline on GitHub Actions + Cloud Run Jobs. VPS one-box is documented as an alternative self-host path. Plan 07 owns deploy/CD/secret-fan-out automation.
 - A dedicated human/agent account setup session is expected for cloud accounts, domains, CLIs, and secrets.
 
 ## Locked Decisions
@@ -47,7 +62,7 @@ Build the operational and trust systems required to run Intercal as a reliable o
 
 - Security and deployment rules belong in durable docs, not dated plans.
 - Provider-specific setup belongs in runbooks with substitution points.
-- Operations scripts must be Windows-native friendly where local execution is expected.
+- Operations scripts must be Windows-native friendly where local execution is expected. DB checks run against `DATABASE_URL` (a Neon branch) — not a local Docker database.
 - API/MCP behavior changes require contract and snapshot updates.
 - Changelog fragments are required for security, deployment, operations, package, CI, or schema changes.
 
@@ -61,7 +76,7 @@ Auth/rate limits -> source policy -> audit events -> feedback/review records -> 
 
 ## Workstream 1: Auth And Rate Limits
 
-Goal: Protect REST and MCP access with scoped keys and measurable usage.
+Goal: Protect REST and MCP access with scoped keys and measurable usage. REST uses hashed scoped API keys; MCP at `/api/mcp` uses OAuth 2.1 resource-server (per decision 0001 D10).
 
 Depends on:
 
@@ -284,12 +299,13 @@ Primary areas:
 Implementation tasks:
 
 - [ ] Add ingestion, worker, queue, failed job, extraction, claim, resolution, merge/split, embedding, digest cache, API/MCP latency, provider usage/cost, and freshness metrics.
+- [ ] Add per-provider consumption tracking vs. free-tier allowances: Neon compute/storage, Cloudflare R2 operations/egress, Upstash Redis commands/bandwidth, Vertex AI / Gemini daily token cap, GitHub Actions minutes. Surface these against the limits in `docs/operations/resource-budget.md`.
 - [ ] Add CLI or database views for key health checks.
 - [ ] Add dashboard cards where useful and backed by real data.
 
 Exit criteria:
 
-- [ ] Operator can inspect source health, failed jobs, usage, freshness, and provider cost signals.
+- [ ] Operator can inspect source health, failed jobs, usage, freshness, and per-provider cost/consumption signals against the resource budget.
 
 Suggested verification:
 
@@ -298,7 +314,7 @@ Suggested verification:
 
 ## Workstream 7: Deployment Paths And Backups
 
-Goal: Prove local, VPS, and managed deployment paths with backup/restore.
+Goal: Document and prove the live and alternative deployment paths with backup/restore.
 
 Depends on:
 
@@ -310,7 +326,8 @@ Enables:
 
 Repo guidance:
 
-- Provider-specific instructions need replacement paths.
+- The primary deployment topology is decided (decisions `0001`/`0002`): app+MCP on Vercel, pipeline on GitHub Actions + Cloud Run Jobs, DB on Neon. Plan 07 owns the deploy/CD/secret-fan-out automation. This workstream documents and proves that path, plus the VPS and self-host alternatives.
+- `docker compose` remains in the repo as a self-host/other-users path. Maintainers develop directly against Neon — no local Docker required.
 
 Primary areas:
 
@@ -320,15 +337,15 @@ Primary areas:
 
 Implementation tasks:
 
-- [ ] Document and prove local Docker Compose deployment.
-- [ ] Document and prove single-VPS deployment.
-- [ ] Document managed production deployment path.
+- [ ] Document and prove the live deployment path: Vercel (app+MCP+REST) + Neon (DB) + GitHub Actions (batch pipeline) + Cloud Run Jobs (on-demand) + Upstash + R2.
+- [ ] Document optional self-host path using `docker compose` (for other users; maintainers use Neon direct).
+- [ ] Document single-VPS deployment as a paid-tier alternative.
 - [ ] Add DNS, TLS, env, health check, migration, upgrade, backup, and restore instructions.
-- [ ] Add backup/restore test command.
+- [ ] Add backup/restore test command (Neon branch + dump).
 
 Exit criteria:
 
-- [ ] Backup and restore are proven for at least local and one hosted path when credentials are available.
+- [ ] Backup and restore are proven for the live Neon path; VPS path is documented.
 
 Suggested verification:
 
@@ -358,7 +375,7 @@ Primary areas:
 
 Implementation tasks:
 
-- [ ] Add prerequisites for domain/DNS, SSH keys, VPS, database, object storage, model providers, Google Vertex, Azure if usable, and CLI auth.
+- [ ] Add prerequisites for domain/DNS, SSH keys, VPS, Neon (DB), Cloudflare R2 (storage), Upstash (queue), Vertex AI / Gemini (LLM), GCloud Cloud Run / Cloud Build, GitHub Actions, Vercel, and CLI auth.
 - [ ] Add proof commands for each account/tool.
 - [ ] Add secret handoff and rotation policy.
 

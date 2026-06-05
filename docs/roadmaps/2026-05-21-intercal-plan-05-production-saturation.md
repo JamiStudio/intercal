@@ -1,14 +1,30 @@
 # Production Saturation And Release Audit Implementation Plan
 
 Date: 2026-05-21
+Aligned: 2026-06-04 to live stack
 Status: [ ] Active draft
-Source reports: `docs/research/2026-05-21-intercal-foundation-report.md`, Plans 01-04 closeout notes, durable architecture and operations docs
+Source reports: `docs/research/2026-05-21-intercal-foundation-report.md`, `docs/research/2026-06-04-intercal-revisit-audit-and-dev-environment.md`, Plans 01-04 closeout notes, durable architecture and operations docs; decisions `docs/decisions/0001-foundation-stack.md`, `docs/decisions/0002-final-hosting-topology.md`
 Owner: Main orchestration agent
 Surface: architecture parity, data quality, provider-switch proof, security review, scale/cost review, documentation parity, full verification, release readiness
 
 ## Purpose
 
 Audit, extend, harden, and verify Intercal until the implemented system matches the intended production architecture. This plan owns closing foundation gaps rather than leaving them as notes.
+
+## Live Alignment (2026-06-04)
+
+This plan is **Phase F** of the master program (`docs/roadmaps/2026-06-04-intercal-program.md`). It audits and hardens the full live system. The decided stack to audit against (decisions `0001`/`0002`):
+- **DB:** Neon (Postgres 18 + pgvector 0.8.1). Dev = a Neon branch. No local Docker in the maintainers' flow; `docker compose` is optional self-host.
+- **Storage:** Cloudflare R2 (S3 API) behind `StoragePort`; GCS documented alt.
+- **Queue/cache:** Upstash Redis (TCP) behind `QueuePort`; `pgmq` fallback.
+- **Embeddings:** local fastembed (bge-small 384-dim halfvec) behind `EmbeddingsPort`.
+- **LLM:** Vertex AI primary + Gemini API fallback behind `LlmPort`; Groq/Anthropic/OpenAI also behind the port.
+- **App+MCP:** Vercel (one project); MCP at `/api/mcp` stateless Streamable HTTP.
+- **Pipeline:** GitHub Actions scheduled + Cloud Run Jobs.
+- **Provider-switch proofs** must cover all the above decided providers, not abstract stubs.
+- **Scale/cost review** must audit against `docs/operations/resource-budget.md` (free-tier limits; ingestion cadence; LLM token budget; embeddings zero-cost posture).
+
+See also: `docs/decisions/0001-foundation-stack.md`, `docs/decisions/0002-final-hosting-topology.md`, `docs/operations/resource-budget.md`, `docs/roadmaps/2026-06-04-intercal-program.md`.
 
 ## Status Legend
 
@@ -42,7 +58,7 @@ Audit, extend, harden, and verify Intercal until the implemented system matches 
 
 - Read `AGENTS.md`, durable architecture docs, operations docs, source policy docs, and all active plan closeout notes before auditing.
 - Preserve unrelated user changes.
-- Run Windows-native commands locally.
+- Run Windows-native commands locally. DB checks run against `DATABASE_URL` (a Neon branch) — not a local Docker database.
 - Update changelog fragments for release-meaningful fixes.
 - Retire completed dated plans to `docs/_legacy/roadmaps/` after durable docs carry the operating rules.
 
@@ -166,12 +182,12 @@ Primary areas:
 
 Implementation tasks:
 
-- [ ] Prove model provider swap.
-- [ ] Prove embedding provider swap.
-- [ ] Prove object storage swap.
-- [ ] Prove queue/cache swap.
-- [ ] Prove app host substitution path.
-- [ ] Prove database remains portable Postgres.
+- [ ] Prove LLM provider swap: Vertex AI (primary) → Gemini API key (fallback) → Groq/Anthropic/OpenAI — all via `LlmPort` with no caller changes.
+- [ ] Prove embedding provider swap: local fastembed default → hosted alternative — all via `EmbeddingsPort`; confirm re-embed safety (model+dim stored per vector row).
+- [ ] Prove object storage swap: Cloudflare R2 → GCS/AWS/MinIO — all via `StoragePort` S3-API adapter with only endpoint/credential change.
+- [ ] Prove queue/cache swap: Upstash Redis → `pgmq` Postgres fallback — all via `QueuePort`.
+- [ ] Prove app host substitution path: Vercel → Cloudflare Workers/Pages (Hono is portable; Next.js adapter).
+- [ ] Prove database remains portable Postgres: Neon → Supabase → managed Postgres — schema + migrations portable via `pg_dump`/`pg_restore`.
 
 Exit criteria:
 
@@ -238,12 +254,13 @@ Enables:
 
 Repo guidance:
 
-- Cost docs should separate local, VPS, and managed paths.
+- Cost review must audit against the free-tier limits in `docs/operations/resource-budget.md` (Neon, R2, Upstash, Vertex/Gemini daily cap, GitHub Actions minutes). Cost docs should separate the free mosaic, VPS, and managed paid paths.
 
 Primary areas:
 
 - `docs/operations/deployment.md`
 - `docs/operations/costs.md`
+- `docs/operations/resource-budget.md`
 - `scripts/ops`
 
 Implementation tasks:

@@ -30,6 +30,32 @@ based on the `vertexai` flag.  Switching between modes is a single env-var chang
 
 `LLM_PROVIDER=groq|anthropic|openai` route to their own adapter classes; all implement `LlmPort`.
 
+## LLM port contract guarantees
+
+`LlmPort` (`intercal_shared.ports.llm`) guarantees the following to every caller, regardless
+of provider, so extraction (W3) and synthesis (Plan 03) need not reinvent them:
+
+- **Schema-validated structured extraction.** `extract_structured(schema, prompt)` returns a
+  `StructuredResult` whose `.data` has been validated against the caller's JSON Schema (subset:
+  type / required / properties / items / enum / nullable). The Gemini/Vertex adapter additionally
+  requests the SDK's native server-side `response_schema` enforcement. Wrong-shaped output never
+  reaches canonical records — it raises `LlmExtractionError`.
+- **Bounded retries.** Malformed/invalid output and transient rate-limit/timeout failures retry a
+  small fixed number of times with backoff before raising.
+- **Typed error taxonomy.** `LlmError` is the base; `LlmAuthError` and `LlmBudgetExceededError` are
+  fatal, `LlmRateLimitError` / `LlmTimeoutError` are retryable, `LlmExtractionError` signals
+  malformed output. Callers branch on these instead of parsing strings.
+- **Usage accounting.** `LlmResponse` and `StructuredResult` both carry `input_tokens` /
+  `output_tokens` for cost tracking.
+- **Daily request budget at the boundary.** A `RequestBudget` (default `InMemoryRequestBudget` from
+  `LLM_DAILY_REQUEST_BUDGET`) is consulted before each call; the per-call output cap
+  (`LLM_MAX_OUTPUT_TOKENS`) and timeout (`LLM_TIMEOUT_SECONDS`) are wired by `make_llm`. See
+  [`../operations/resource-budget.md`](../operations/resource-budget.md).
+
+For Vertex, `VERTEX_PROJECT` falls back to `GCLOUD_PROJECT_ID`, and `GOOGLE_APPLICATION_CREDENTIALS`
+falls back to `GOOGLE_SERVICE_ACCOUNT_KEY` (path only), so a single service-account `.env` drives
+Vertex without duplicating values.
+
 ## Embeddings adapter
 
 `LocalEmbeddingsAdapter` (fastembed/ONNX) is the zero-cost default.  It exposes `.model` and `.dim`

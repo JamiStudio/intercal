@@ -31,13 +31,15 @@ async def main() -> None:
     print(f"\n[LLM] provider={cfg.llm_provider!r}  model={cfg.llm_model!r}")
 
     if cfg.llm_provider == "vertex":
-        if not cfg.vertex_project:
+        if not cfg.resolved_vertex_project:
             print(
-                "  SKIP: LLM_PROVIDER=vertex but VERTEX_PROJECT is not set. "
-                "Set VERTEX_PROJECT in .env to test Vertex mode."
+                "  SKIP: LLM_PROVIDER=vertex but no project resolved. "
+                "Set VERTEX_PROJECT (or GCLOUD_PROJECT_ID) in .env to test Vertex mode."
             )
         else:
-            print(f"  project={cfg.vertex_project!r}  location={cfg.vertex_location!r}")
+            print(
+                f"  project={cfg.resolved_vertex_project!r}  location={cfg.vertex_location!r}"
+            )
             await _test_llm_vertex(cfg)
     elif cfg.llm_provider == "gemini":
         if not cfg.gemini_api_key:
@@ -93,9 +95,11 @@ async def _test_llm_vertex(cfg: object) -> None:
             'Return JSON with key "answer" set to "yes".',
             max_tokens=100,
         )
-        print(f"  extract_structured() -> {result}")
-        assert isinstance(result, dict), "Expected dict result"
-        print("  [PASS] Vertex AI LLM extract_structured()")
+        print(f"  extract_structured() -> data={result.data}")
+        print(f"  input_tokens={result.input_tokens}  output_tokens={result.output_tokens}")
+        assert isinstance(result.data, dict), "Expected dict in StructuredResult.data"
+        assert "answer" in result.data, "Schema validation should guarantee 'answer' key"
+        print("  [PASS] Vertex AI LLM extract_structured() (schema-validated)")
     except Exception as exc:
         print(f"  [FAIL] Vertex AI LLM extract_structured(): {exc}")
         sys.exit(1)

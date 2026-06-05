@@ -342,6 +342,39 @@ Implementation tasks:
   `extract_structured()` → `{'answer': 'yes'}`; fastembed `embed(2 texts)` → 2 × 384-dim vectors.
   Provider: `gemini-2.5-flash` on `rich-wavelet-496206-h7` (`us-east4`), SA ADC.
 - [x] `provider-boundaries.md` updated with Vertex/Gemini dual-mode design and embeddings metadata rule.
+- [x] Audit pass (2026-06-05, second fresh context) closed the contract-robustness gaps the
+  first pass left (the steering's required W4 surface). All in `services/shared`, port seam intact:
+  1. **Schema validation + native structured output.** `extract_structured` now returns a
+     `StructuredResult` (validated `.data` + token usage) instead of a bare dict. The Gemini/Vertex
+     adapter passes the JSON Schema natively via the SDK's `response_schema` (server-side
+     enforcement, google-genai 2.8.0 — verified against official docs), and **every** adapter then
+     validates the parsed object client-side against the caller's schema (dependency-free subset
+     validator: type/required/properties/items/enum/nullable). Pass 1 only embedded the schema in
+     prompt text and never validated — wrong-shaped JSON would have leaked into W3 claim persistence.
+  2. **Bounded retries.** Malformed / schema-invalid output and transient rate-limit / timeout
+     errors retry (2 extra tries, exponential backoff) in a shared `_llm_common` helper used by all
+     adapters; persistent failure raises `LlmExtractionError`.
+  3. **Error taxonomy.** Added `LlmAuthError`, `LlmRateLimitError`, `LlmTimeoutError`,
+     `LlmBudgetExceededError` (all under `LlmError`); each adapter classifies SDK exceptions so
+     W3/W5 can tell retryable from fatal.
+  4. **Daily-budget enforcement hook.** `RequestBudget` protocol + `InMemoryRequestBudget` (from
+     `LLM_DAILY_REQUEST_BUDGET`) consulted before every call at the port boundary; `make_llm`
+     wires it (and `make_request_budget`). Was previously config-only dead weight.
+  5. **Token/timeout caps wired.** `LLM_MAX_OUTPUT_TOKENS` is the default output cap (callers pass
+     `max_tokens=None` to use it); new `LLM_TIMEOUT_SECONDS` applies a per-call timeout. `make_llm`
+     injects both.
+  6. **Config validation.** `Settings` model-validator rejects `vertex` without a resolvable
+     project, non-positive `EMBEDDINGS_DIM` / token caps / timeout. Added `resolved_vertex_project`
+     (falls back to `GCLOUD_PROJECT_ID`) and `resolved_adc_credentials` (falls back to
+     `GOOGLE_SERVICE_ACCOUNT_KEY`) so a single SA-key `.env` drives Vertex; `make_llm` promotes the
+     SA-key path to `GOOGLE_APPLICATION_CREDENTIALS` for ADC (path only, never contents).
+- [x] +24 net W4 tests (181 service tests pass); `pnpm py:lint` + `pnpm py:typecheck` clean (0 errors).
+- [x] Re-verified LIVE (2026-06-05, 2nd pass): Vertex `complete()`='OK' (7/1 tok) +
+  schema-validated `extract_structured()`→`{'answer':'yes'}` (16/6 tok); Gemini-API-key fallback
+  `complete()`='OK'; fastembed 2×384-dim — all through the ports, same `gemini-2.5-flash`. Provider
+  swap = one env var. (Note: the dev `.env` SA-key path is mangled by dotenv backslash-escape
+  parsing — a dev-env data issue, not a code defect; flagged separately. Vertex verified by passing
+  the path via the process env.)
 
 Exit criteria:
 

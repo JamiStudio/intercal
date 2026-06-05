@@ -1,6 +1,6 @@
 """Google Gemini / Vertex AI LLM adapter.
 
-Requires: ``intercal-shared[llm-gemini]`` (google-genai>=1.0.0).
+Requires: ``intercal-shared[llm-gemini]`` (google-genai>=1.0.0; validated against 2.8.0).
 
 Two credential modes — same adapter class, selected at construction time:
 
@@ -18,18 +18,49 @@ Two credential modes — same adapter class, selected at construction time:
 Vertex model names are the same as the Gemini API names (``gemini-2.5-flash``
 etc.) — the SDK routes them correctly based on the ``vertexai`` flag.
 
-Structured extraction uses JSON-mode generation_config (``response_mime_type``).
+Structured extraction uses the SDK's native ``response_schema`` +
+``response_mime_type='application/json'`` (server-side JSON-Schema enforcement,
+available across actively supported Gemini models) and then validates the result
+client-side against the caller's schema (defence in depth).
 """
 
 from __future__ import annotations
 
-import json
 import logging
 from typing import Any
 
-from intercal_shared.ports.llm import LlmError, LlmExtractionError, LlmResponse
+from intercal_shared.adapters._llm_common import (
+    consume_budget,
+    parse_json_object,
+    run_structured_with_retries,
+    with_timeout,
+)
+from intercal_shared.ports.llm import (
+    LlmAuthError,
+    LlmError,
+    LlmRateLimitError,
+    LlmResponse,
+    LlmTimeoutError,
+    RequestBudget,
+    StructuredResult,
+)
 
 _log = logging.getLogger(__name__)
+
+
+def _classify_provider_error(exc: Exception, *, mode: str, op: str) -> LlmError:
+    """Map an arbitrary SDK exception to the port error taxonomy."""
+    name = type(exc).__name__.lower()
+    text = str(exc).lower()
+    if any(s in name or s in text for s in ("permissiondenied", "unauthenticated", "permission")):
+        return LlmAuthError(f"{mode} {op} failed (auth): {exc}")
+    if "401" in text or "403" in text or "credential" in text or "api key" in text:
+        return LlmAuthError(f"{mode} {op} failed (auth): {exc}")
+    if "resourceexhausted" in name or "rate" in text or "quota" in text or "429" in text:
+        return LlmRateLimitError(f"{mode} {op} failed (rate limit): {exc}")
+    if "timeout" in name or "deadline" in text or "timeout" in text:
+        return LlmTimeoutError(f"{mode} {op} failed (timeout): {exc}")
+    return LlmError(f"{mode} {op} failed: {exc}")
 
 
 class GeminiLlmAdapter:
@@ -52,6 +83,14 @@ class GeminiLlmAdapter:
         GCP project ID.  Required when ``vertexai=True``.
     location:
         GCP region, e.g. ``"us-east4"``.  Required when ``vertexai=True``.
+    default_max_tokens:
+        Output-token cap applied when a caller does not pass ``max_tokens``
+        (wired from ``LLM_MAX_OUTPUT_TOKENS``).
+    timeout:
+        Per-call timeout in seconds (``None`` disables).
+    budget:
+        Optional :class:`RequestBudget` consulted before each call to enforce the
+        daily request cap at the port boundary.
     """
 
     def __init__(
@@ -62,6 +101,9 @@ class GeminiLlmAdapter:
         vertexai: bool = False,
         project: str = "",
         location: str = "us-east4",
+        default_max_tokens: int = 2048,
+        timeout: float | None = 60.0,
+        budget: RequestBudget | None = None,
     ) -> None:
         try:
             import google.genai as genai  # type: ignore[import-untyped]
@@ -104,31 +146,96 @@ class GeminiLlmAdapter:
         self._genai = genai
         self._model = model
         self._vertexai = vertexai
+        self._default_max_tokens = default_max_tokens
+        self._timeout = timeout
+        self._budget = budget
 
     @property
     def model(self) -> str:
         """Model identifier used by this adapter."""
         return self._model
 
+    @staticmethod
+    def _usage(response: Any) -> tuple[int | None, int | None]:
+        usage = getattr(response, "usage_metadata", None)
+        if usage is None:
+            return None, None
+        input_tokens = getattr(usage, "prompt_token_count", None)
+        output_tokens = getattr(usage, "candidates_token_count", None) or getattr(
+            usage, "total_token_count", None
+        )
+        return input_tokens, output_tokens
+
     async def complete(
         self,
         prompt: str,
         *,
         system: str | None = None,
-        max_tokens: int = 1024,
+        max_tokens: int | None = None,
         temperature: float = 0.0,
     ) -> LlmResponse:
         import asyncio
 
+        consume_budget(self._budget)
+        mode = "Vertex" if self._vertexai else "Gemini"
+        config: dict[str, Any] = {
+            "max_output_tokens": max_tokens if max_tokens is not None else self._default_max_tokens,
+            "temperature": temperature,
+        }
+        if system:
+            config["system_instruction"] = system
+
+        loop = asyncio.get_event_loop()
+
+        def _sync() -> Any:
+            return self._client.models.generate_content(
+                model=self._model,
+                contents=prompt,
+                config=self._genai.types.GenerateContentConfig(**config),
+            )
+
         try:
+            response = await with_timeout(loop.run_in_executor(None, _sync), self._timeout)
+        except LlmError:
+            raise
+        except Exception as exc:
+            raise _classify_provider_error(exc, mode=mode, op="completion") from exc
+
+        input_tokens, output_tokens = self._usage(response)
+        return LlmResponse(
+            text=response.text or "",
+            model=self._model,
+            input_tokens=input_tokens,
+            output_tokens=output_tokens,
+        )
+
+    async def extract_structured(
+        self,
+        schema: dict[str, Any],
+        prompt: str,
+        *,
+        system: str | None = None,
+        max_tokens: int | None = None,
+    ) -> StructuredResult:
+        import asyncio
+
+        mode = "Vertex" if self._vertexai else "Gemini"
+        loop = asyncio.get_event_loop()
+
+        async def _attempt() -> StructuredResult:
+            consume_budget(self._budget)
             config: dict[str, Any] = {
-                "max_output_tokens": max_tokens,
-                "temperature": temperature,
+                "max_output_tokens": max_tokens
+                if max_tokens is not None
+                else self._default_max_tokens,
+                "temperature": 0.0,
+                "response_mime_type": "application/json",
             }
+            # Native server-side JSON-Schema enforcement when a non-empty schema is given.
+            if schema:
+                config["response_schema"] = schema
             if system:
                 config["system_instruction"] = system
-
-            loop = asyncio.get_event_loop()
 
             def _sync() -> Any:
                 return self._client.models.generate_content(
@@ -137,76 +244,22 @@ class GeminiLlmAdapter:
                     config=self._genai.types.GenerateContentConfig(**config),
                 )
 
-            response = await loop.run_in_executor(None, _sync)
-            text: str = response.text or ""
-            # Surface token counts if the SDK populated usage_metadata.
-            usage = getattr(response, "usage_metadata", None)
-            input_tokens: int | None = (
-                getattr(usage, "prompt_token_count", None) if usage else None
-            )
-            output_tokens: int | None = (
-                getattr(usage, "candidates_token_count", None)
-                or getattr(usage, "total_token_count", None)
-                if usage
-                else None
-            )
-            return LlmResponse(
-                text=text,
+            try:
+                response = await with_timeout(loop.run_in_executor(None, _sync), self._timeout)
+            except LlmError:
+                raise
+            except Exception as exc:
+                raise _classify_provider_error(exc, mode=mode, op="structured extraction") from exc
+
+            data = parse_json_object(response.text or "", provider=mode)
+            input_tokens, output_tokens = self._usage(response)
+            return StructuredResult(
+                data=data,
                 model=self._model,
                 input_tokens=input_tokens,
                 output_tokens=output_tokens,
             )
-        except LlmError:
-            raise
-        except Exception as exc:
-            mode = "Vertex" if self._vertexai else "Gemini"
-            raise LlmError(f"{mode} completion failed: {exc}") from exc
 
-    async def extract_structured(
-        self,
-        schema: dict[str, Any],
-        prompt: str,
-        *,
-        system: str | None = None,
-        max_tokens: int = 2048,
-    ) -> dict[str, Any]:
-        import asyncio
-
-        try:
-            schema_hint = json.dumps(schema, indent=2)
-            full_prompt = (
-                f"{prompt}\n\nRespond ONLY with a JSON object matching this schema:\n{schema_hint}"
-            )
-            config: dict[str, Any] = {
-                "max_output_tokens": max_tokens,
-                "temperature": 0.0,
-                "response_mime_type": "application/json",
-            }
-            if system:
-                config["system_instruction"] = system
-
-            loop = asyncio.get_event_loop()
-
-            def _sync() -> Any:
-                return self._client.models.generate_content(
-                    model=self._model,
-                    contents=full_prompt,
-                    config=self._genai.types.GenerateContentConfig(**config),
-                )
-
-            response = await loop.run_in_executor(None, _sync)
-            raw = (response.text or "").strip()
-            try:
-                result: dict[str, Any] = json.loads(raw)
-            except json.JSONDecodeError as parse_exc:
-                raise LlmExtractionError(
-                    f"Gemini/Vertex returned non-JSON response: {raw[:200]!r}"
-                ) from parse_exc
-            return result
-        except LlmExtractionError:
-            raise
-        except LlmError:
-            raise
-        except Exception as exc:
-            mode = "Vertex" if self._vertexai else "Gemini"
-            raise LlmError(f"{mode} structured extraction failed: {exc}") from exc
+        return await run_structured_with_retries(
+            attempt=_attempt, schema=schema, provider=mode
+        )

@@ -40,7 +40,9 @@ def test_settings_override_via_kwargs() -> None:
 
 def test_settings_accepts_all_llm_providers() -> None:
     for provider in ("vertex", "gemini", "groq", "anthropic", "openai"):
-        cfg = _isolated_settings(llm_provider=provider)
+        # Vertex mode requires a resolvable project id (validator enforced).
+        extra = {"vertex_project": "p"} if provider == "vertex" else {}
+        cfg = _isolated_settings(llm_provider=provider, **extra)
         assert cfg.llm_provider == provider
 
 

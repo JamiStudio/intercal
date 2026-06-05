@@ -38,7 +38,7 @@ def _isolated_settings(**kwargs: object) -> Settings:
 
 class TestSettingsW4:
     def test_vertex_provider_literal_accepted(self) -> None:
-        cfg = _isolated_settings(llm_provider="vertex")
+        cfg = _isolated_settings(llm_provider="vertex", vertex_project="p")
         assert cfg.llm_provider == "vertex"
 
     def test_vertex_project_default_empty(self) -> None:
@@ -60,7 +60,8 @@ class TestSettingsW4:
 
     def test_all_llm_providers_accepted(self) -> None:
         for provider in ("vertex", "gemini", "groq", "anthropic", "openai"):
-            cfg = _isolated_settings(llm_provider=provider)
+            extra = {"vertex_project": "p"} if provider == "vertex" else {}
+            cfg = _isolated_settings(llm_provider=provider, **extra)
             assert cfg.llm_provider == provider
 
 
@@ -235,17 +236,86 @@ class TestGeminiLlmAdapterComplete:
 
 class TestGeminiLlmAdapterExtractStructured:
     @pytest.mark.asyncio
-    async def test_extract_structured_returns_dict(
+    async def test_extract_structured_returns_structured_result(
         self, gemini_adapter_with_mock_client: Any
     ) -> None:
+        from intercal_shared.ports.llm import StructuredResult
+
         adapter, mock_client = gemini_adapter_with_mock_client
         mock_response = MagicMock()
         mock_response.text = '{"name": "Alice", "age": 30}'
+        mock_response.usage_metadata = None
         mock_client.models.generate_content.return_value = mock_response
 
-        schema = {"type": "object", "properties": {"name": {}, "age": {}}}
+        schema = {
+            "type": "object",
+            "properties": {"name": {"type": "string"}, "age": {"type": "integer"}},
+            "required": ["name", "age"],
+        }
         result = await adapter.extract_structured(schema, "Extract person info from: Alice is 30.")
-        assert result == {"name": "Alice", "age": 30}
+        assert isinstance(result, StructuredResult)
+        assert result.data == {"name": "Alice", "age": 30}
+        assert result.model == "gemini-2.5-flash"
+
+    @pytest.mark.asyncio
+    async def test_extract_structured_passes_response_schema_to_sdk(
+        self, gemini_adapter_with_mock_client: Any
+    ) -> None:
+        """Adapter should request native server-side schema enforcement."""
+        adapter, mock_client = gemini_adapter_with_mock_client
+        mock_response = MagicMock()
+        mock_response.text = '{"answer": "yes"}'
+        mock_response.usage_metadata = None
+        mock_client.models.generate_content.return_value = mock_response
+
+        schema = {"type": "object", "properties": {"answer": {"type": "string"}}}
+        await adapter.extract_structured(schema, "prompt")
+        # The patched GenerateContentConfig returns the kwargs dict; inspect the call.
+        _, call_kwargs = mock_client.models.generate_content.call_args
+        cfg = call_kwargs["config"]
+        assert cfg["response_mime_type"] == "application/json"
+        assert cfg["response_schema"] == schema
+
+    @pytest.mark.asyncio
+    async def test_extract_structured_validates_against_schema(
+        self, gemini_adapter_with_mock_client: Any
+    ) -> None:
+        """Valid JSON of the WRONG shape must raise after retries are exhausted."""
+        from intercal_shared.ports.llm import LlmExtractionError
+
+        adapter, mock_client = gemini_adapter_with_mock_client
+        mock_response = MagicMock()
+        # Missing required "age"; "name" wrong type.
+        mock_response.text = '{"name": 123}'
+        mock_response.usage_metadata = None
+        mock_client.models.generate_content.return_value = mock_response
+
+        schema = {
+            "type": "object",
+            "properties": {"name": {"type": "string"}, "age": {"type": "integer"}},
+            "required": ["name", "age"],
+        }
+        with pytest.raises(LlmExtractionError, match="Schema validation failed"):
+            await adapter.extract_structured(schema, "prompt")
+
+    @pytest.mark.asyncio
+    async def test_extract_structured_retries_then_succeeds(
+        self, gemini_adapter_with_mock_client: Any
+    ) -> None:
+        """First attempt malformed, second attempt valid -> succeeds via retry."""
+        adapter, mock_client = gemini_adapter_with_mock_client
+        bad = MagicMock()
+        bad.text = "not json"
+        bad.usage_metadata = None
+        good = MagicMock()
+        good.text = '{"answer": "yes"}'
+        good.usage_metadata = None
+        mock_client.models.generate_content.side_effect = [bad, good]
+
+        schema = {"type": "object", "properties": {"answer": {"type": "string"}}}
+        result = await adapter.extract_structured(schema, "prompt")
+        assert result.data == {"answer": "yes"}
+        assert mock_client.models.generate_content.call_count == 2
 
     @pytest.mark.asyncio
     async def test_extract_structured_raises_extraction_error_on_invalid_json(
@@ -256,6 +326,7 @@ class TestGeminiLlmAdapterExtractStructured:
         adapter, mock_client = gemini_adapter_with_mock_client
         mock_response = MagicMock()
         mock_response.text = "not json at all"
+        mock_response.usage_metadata = None
         mock_client.models.generate_content.return_value = mock_response
 
         with pytest.raises(LlmExtractionError, match="non-JSON"):
@@ -435,12 +506,11 @@ class TestEmbeddingsPortCompliance:
 
 class TestMakeLlmVertexPath:
     def test_make_llm_vertex_raises_on_missing_project(self) -> None:
-        pytest.importorskip("google.genai", reason="google-genai not installed")
-        from intercal_shared.factory import make_llm
+        """Vertex-without-project is now rejected at Settings construction (validator)."""
+        import pydantic
 
-        cfg = _isolated_settings(llm_provider="vertex", vertex_project="")
-        with pytest.raises(ValueError, match="VERTEX_PROJECT"):
-            make_llm(cfg)
+        with pytest.raises(pydantic.ValidationError, match="VERTEX_PROJECT"):
+            _isolated_settings(llm_provider="vertex", vertex_project="", gcloud_project_id=None)
 
     def test_make_llm_vertex_constructs_with_mocked_sdk(self) -> None:
         pytest.importorskip("google.genai", reason="google-genai not installed")
@@ -492,3 +562,216 @@ class TestMakeLlmVertexPath:
                 project="proj",
                 location="us-central1",
             )
+
+    def test_make_llm_vertex_resolves_project_from_gcloud_project_id(self) -> None:
+        pytest.importorskip("google.genai", reason="google-genai not installed")
+        import google.genai as real_genai
+        from intercal_shared.factory import make_llm
+
+        mock_client = MagicMock()
+        with patch.object(real_genai, "Client", return_value=mock_client) as mock_cls:
+            cfg = _isolated_settings(
+                llm_provider="vertex",
+                vertex_project="",
+                gcloud_project_id="fallback-proj",
+            )
+            make_llm(cfg)
+            mock_cls.assert_called_once_with(
+                vertexai=True,
+                project="fallback-proj",
+                location="us-east4",
+            )
+
+
+# ──────────────────────────────────────────────────────────────────────────────
+# JSON Schema validation (dependency-free subset)
+# ──────────────────────────────────────────────────────────────────────────────
+
+
+class TestSchemaValidation:
+    def test_accepts_valid_object(self) -> None:
+        from intercal_shared.ports.llm import validate_against_schema
+
+        schema = {
+            "type": "object",
+            "properties": {"name": {"type": "string"}, "age": {"type": "integer"}},
+            "required": ["name"],
+        }
+        validate_against_schema({"name": "x", "age": 3}, schema)  # no raise
+
+    def test_empty_schema_accepts_anything(self) -> None:
+        from intercal_shared.ports.llm import validate_against_schema
+
+        validate_against_schema({"whatever": [1, 2]}, {})
+
+    def test_missing_required_raises(self) -> None:
+        from intercal_shared.ports.llm import LlmExtractionError, validate_against_schema
+
+        schema = {"type": "object", "required": ["name"]}
+        with pytest.raises(LlmExtractionError, match="missing required property 'name'"):
+            validate_against_schema({}, schema)
+
+    def test_wrong_type_raises(self) -> None:
+        from intercal_shared.ports.llm import LlmExtractionError, validate_against_schema
+
+        schema = {"type": "object", "properties": {"age": {"type": "integer"}}}
+        with pytest.raises(LlmExtractionError, match=r"\$.age"):
+            validate_against_schema({"age": "not-an-int"}, schema)
+
+    def test_integer_accepts_integral_float_rejects_bool(self) -> None:
+        from intercal_shared.ports.llm import LlmExtractionError, validate_against_schema
+
+        schema = {"type": "integer"}
+        validate_against_schema(3.0, schema)  # integral float ok
+        with pytest.raises(LlmExtractionError):
+            validate_against_schema(True, schema)
+
+    def test_enum_enforced(self) -> None:
+        from intercal_shared.ports.llm import LlmExtractionError, validate_against_schema
+
+        schema = {"type": "string", "enum": ["a", "b"]}
+        validate_against_schema("a", schema)
+        with pytest.raises(LlmExtractionError, match="not in enum"):
+            validate_against_schema("c", schema)
+
+    def test_array_items_validated(self) -> None:
+        from intercal_shared.ports.llm import LlmExtractionError, validate_against_schema
+
+        schema = {"type": "array", "items": {"type": "integer"}}
+        validate_against_schema([1, 2, 3], schema)
+        with pytest.raises(LlmExtractionError, match=r"\[1\]"):
+            validate_against_schema([1, "x"], schema)
+
+    def test_nullable_type_list(self) -> None:
+        from intercal_shared.ports.llm import validate_against_schema
+
+        schema = {"type": ["string", "null"]}
+        validate_against_schema(None, schema)
+        validate_against_schema("x", schema)
+
+
+# ──────────────────────────────────────────────────────────────────────────────
+# Request budget enforcement
+# ──────────────────────────────────────────────────────────────────────────────
+
+
+class TestRequestBudget:
+    def test_consumes_until_limit(self) -> None:
+        from intercal_shared.ports.llm import InMemoryRequestBudget, LlmBudgetExceededError
+
+        budget = InMemoryRequestBudget(limit=2)
+        budget.check_and_consume()
+        budget.check_and_consume()
+        assert budget.used == 2
+        with pytest.raises(LlmBudgetExceededError, match="budget exhausted"):
+            budget.check_and_consume()
+
+    def test_zero_limit_disables_cap(self) -> None:
+        from intercal_shared.ports.llm import InMemoryRequestBudget
+
+        budget = InMemoryRequestBudget(limit=0)
+        for _ in range(1000):
+            budget.check_and_consume()  # never raises
+
+    @pytest.mark.asyncio
+    async def test_adapter_consumes_budget_on_complete(
+        self, gemini_adapter_with_mock_client: Any
+    ) -> None:
+        from intercal_shared.ports.llm import InMemoryRequestBudget, LlmBudgetExceededError
+
+        adapter, mock_client = gemini_adapter_with_mock_client
+        mock_response = MagicMock()
+        mock_response.text = "ok"
+        mock_response.usage_metadata = None
+        mock_client.models.generate_content.return_value = mock_response
+
+        budget = InMemoryRequestBudget(limit=1)
+        adapter._budget = budget  # type: ignore[attr-defined]
+        await adapter.complete("hi")
+        assert budget.used == 1
+        with pytest.raises(LlmBudgetExceededError):
+            await adapter.complete("again")
+
+
+# ──────────────────────────────────────────────────────────────────────────────
+# Error taxonomy classification
+# ──────────────────────────────────────────────────────────────────────────────
+
+
+class TestErrorTaxonomy:
+    @pytest.mark.asyncio
+    async def test_rate_limit_classified(self, gemini_adapter_with_mock_client: Any) -> None:
+        from intercal_shared.ports.llm import LlmRateLimitError
+
+        adapter, mock_client = gemini_adapter_with_mock_client
+        mock_client.models.generate_content.side_effect = RuntimeError("429 quota exceeded")
+        with pytest.raises(LlmRateLimitError):
+            await adapter.complete("x")
+
+    @pytest.mark.asyncio
+    async def test_auth_classified(self, gemini_adapter_with_mock_client: Any) -> None:
+        from intercal_shared.ports.llm import LlmAuthError
+
+        adapter, mock_client = gemini_adapter_with_mock_client
+        mock_client.models.generate_content.side_effect = RuntimeError("401 invalid api key")
+        with pytest.raises(LlmAuthError):
+            await adapter.complete("x")
+
+    def test_error_hierarchy(self) -> None:
+        from intercal_shared.ports.llm import (
+            LlmAuthError,
+            LlmBudgetExceededError,
+            LlmError,
+            LlmExtractionError,
+            LlmRateLimitError,
+            LlmTimeoutError,
+        )
+
+        for cls in (
+            LlmAuthError,
+            LlmRateLimitError,
+            LlmTimeoutError,
+            LlmBudgetExceededError,
+            LlmExtractionError,
+        ):
+            assert issubclass(cls, LlmError)
+
+
+# ──────────────────────────────────────────────────────────────────────────────
+# Config provider-mode validation
+# ──────────────────────────────────────────────────────────────────────────────
+
+
+class TestConfigValidation:
+    def test_vertex_without_project_raises(self) -> None:
+        import pydantic
+
+        with pytest.raises(pydantic.ValidationError, match="VERTEX_PROJECT"):
+            _isolated_settings(llm_provider="vertex", vertex_project="", gcloud_project_id=None)
+
+    def test_vertex_with_gcloud_project_id_ok(self) -> None:
+        cfg = _isolated_settings(
+            llm_provider="vertex", vertex_project="", gcloud_project_id="p"
+        )
+        assert cfg.resolved_vertex_project == "p"
+
+    def test_zero_embeddings_dim_raises(self) -> None:
+        import pydantic
+
+        with pytest.raises(pydantic.ValidationError, match="EMBEDDINGS_DIM"):
+            _isolated_settings(embeddings_dim=0)
+
+    def test_resolved_adc_prefers_application_credentials(self) -> None:
+        cfg = _isolated_settings(
+            google_application_credentials="/a.json",
+            google_service_account_key="/b.json",
+        )
+        assert cfg.resolved_adc_credentials == "/a.json"
+
+    def test_resolved_adc_falls_back_to_sa_key(self) -> None:
+        cfg = _isolated_settings(google_service_account_key="/b.json")
+        assert cfg.resolved_adc_credentials == "/b.json"
+
+    def test_llm_timeout_default(self) -> None:
+        cfg = _isolated_settings()
+        assert cfg.llm_timeout_seconds == 60.0

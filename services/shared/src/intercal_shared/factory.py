@@ -17,9 +17,12 @@ repositories and job functions.
 
 from __future__ import annotations
 
+import logging
+import os
 from typing import TYPE_CHECKING
 
 from intercal_shared.config import Settings
+from intercal_shared.ports.llm import InMemoryRequestBudget, RequestBudget
 
 if TYPE_CHECKING:
     from intercal_shared.adapters.embeddings_local import LocalEmbeddingsAdapter
@@ -32,6 +35,8 @@ if TYPE_CHECKING:
     from intercal_shared.adapters.queue_redis import RedisQueueAdapter
     from intercal_shared.adapters.scheduler_local import LocalSchedulerAdapter
     from intercal_shared.adapters.storage_s3 import S3StorageAdapter
+
+_log = logging.getLogger(__name__)
 
 
 def make_storage(cfg: Settings) -> S3StorageAdapter:
@@ -73,45 +78,90 @@ def make_embeddings(
     raise ValueError(f"Unsupported embeddings_provider: {cfg.embeddings_provider!r}")
 
 
+def make_request_budget(cfg: Settings) -> RequestBudget:
+    """Construct the daily LLM request budget from ``LLM_DAILY_REQUEST_BUDGET``.
+
+    A process-local counter by default.  ``<= 0`` disables the cap.  A distributed
+    deployment may substitute a durable implementation (Plan 04 observability).
+    """
+    return InMemoryRequestBudget(limit=cfg.llm_daily_request_budget)
+
+
 def make_llm(
     cfg: Settings,
+    budget: RequestBudget | None = None,
 ) -> GeminiLlmAdapter | GroqLlmAdapter | AnthropicLlmAdapter | OpenAILlmAdapter:
-    """Return the configured LLM adapter.
+    """Return the configured LLM adapter, wired with port-policy knobs.
+
+    Every adapter is constructed with the resource-budget output-token cap
+    (``LLM_MAX_OUTPUT_TOKENS``), request timeout (``LLM_TIMEOUT_SECONDS``), and an
+    optional :class:`RequestBudget` (defaults to one built from
+    ``LLM_DAILY_REQUEST_BUDGET``) so the daily cap is enforced at the port boundary.
 
     Provider selection via ``LLM_PROVIDER``:
 
-    - ``vertex`` — Vertex AI mode; requires ``VERTEX_PROJECT`` and ADC (e.g.
-      ``GOOGLE_APPLICATION_CREDENTIALS`` pointing at a service-account JSON key).
-      Primary per the program posture (yrka.io trial credits).
-    - ``gemini`` — Gemini API key mode; requires ``GEMINI_API_KEY``.  Fallback
-      when Vertex credits are exhausted or ADC is unavailable.
+    - ``vertex`` — Vertex AI mode; resolves project from ``VERTEX_PROJECT`` (or
+      ``GCLOUD_PROJECT_ID``) and ADC.  If ``GOOGLE_APPLICATION_CREDENTIALS`` is not
+      set but ``GOOGLE_SERVICE_ACCOUNT_KEY`` is, the latter is promoted into the
+      process env so the Google SDK's ADC discovers it.  Primary per the program
+      posture (yrka.io trial credits).
+    - ``gemini`` — Gemini API key mode; requires ``GEMINI_API_KEY``.  Fallback.
     - ``groq`` / ``anthropic`` / ``openai`` — their respective API keys.
     """
+    if budget is None:
+        budget = make_request_budget(cfg)
+    common = {
+        "default_max_tokens": cfg.llm_max_output_tokens,
+        "timeout": cfg.llm_timeout_seconds,
+        "budget": budget,
+    }
+
     if cfg.llm_provider == "vertex":
         from intercal_shared.adapters.llm_gemini import GeminiLlmAdapter
 
+        # Promote a SA-key path into the SDK's ADC env var if the canonical one
+        # is unset.  Never logs or writes the key contents — only the path.
+        adc = cfg.resolved_adc_credentials
+        if adc and not os.environ.get("GOOGLE_APPLICATION_CREDENTIALS"):
+            os.environ["GOOGLE_APPLICATION_CREDENTIALS"] = adc
+            _log.info("Promoted service-account key path to GOOGLE_APPLICATION_CREDENTIALS (ADC).")
         return GeminiLlmAdapter(
             model=cfg.llm_model,
             vertexai=True,
-            project=cfg.vertex_project,
+            project=cfg.resolved_vertex_project,
             location=cfg.vertex_location,
+            **common,  # type: ignore[arg-type]
         )
     if cfg.llm_provider == "gemini":
         from intercal_shared.adapters.llm_gemini import GeminiLlmAdapter
 
-        return GeminiLlmAdapter(api_key=cfg.gemini_api_key or "", model=cfg.llm_model)
+        return GeminiLlmAdapter(
+            api_key=cfg.gemini_api_key or "",
+            model=cfg.llm_model,
+            **common,  # type: ignore[arg-type]
+        )
     if cfg.llm_provider == "groq":
         from intercal_shared.adapters.llm_groq import GroqLlmAdapter
 
-        return GroqLlmAdapter(api_key=cfg.groq_api_key or "", model=cfg.llm_model)
+        return GroqLlmAdapter(
+            api_key=cfg.groq_api_key or "", model=cfg.llm_model, **common  # type: ignore[arg-type]
+        )
     if cfg.llm_provider == "anthropic":
         from intercal_shared.adapters.llm_anthropic import AnthropicLlmAdapter
 
-        return AnthropicLlmAdapter(api_key=cfg.anthropic_api_key or "", model=cfg.llm_model)
+        return AnthropicLlmAdapter(
+            api_key=cfg.anthropic_api_key or "",
+            model=cfg.llm_model,
+            **common,  # type: ignore[arg-type]
+        )
     if cfg.llm_provider == "openai":
         from intercal_shared.adapters.llm_openai import OpenAILlmAdapter
 
-        return OpenAILlmAdapter(api_key=cfg.openai_api_key or "", model=cfg.llm_model)
+        return OpenAILlmAdapter(
+            api_key=cfg.openai_api_key or "",
+            model=cfg.llm_model,
+            **common,  # type: ignore[arg-type]
+        )
     raise ValueError(f"Unsupported llm_provider: {cfg.llm_provider!r}")
 
 

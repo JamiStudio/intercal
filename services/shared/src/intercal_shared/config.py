@@ -9,7 +9,7 @@ from __future__ import annotations
 
 from typing import Literal
 
-from pydantic import Field
+from pydantic import Field, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -91,12 +91,20 @@ class Settings(BaseSettings):
     # Vertex AI config (used when llm_provider='vertex')
     vertex_project: str = Field(
         default="",
-        description="GCP project ID for Vertex AI mode (VERTEX_PROJECT).",
+        description=(
+            "GCP project ID for Vertex AI mode (VERTEX_PROJECT). "
+            "Falls back to GCLOUD_PROJECT_ID if unset (see model validator)."
+        ),
     )
     vertex_location: str = Field(
         default="us-east4",
         description="GCP region for Vertex AI (VERTEX_LOCATION). Default: us-east4.",
     )
+    # Standard ADC env var for the Google SDK; if unset we fall back to
+    # GOOGLE_SERVICE_ACCOUNT_KEY (a path) so a single SA-key dev .env drives Vertex.
+    google_application_credentials: str | None = Field(default=None)
+    google_service_account_key: str | None = Field(default=None)
+    gcloud_project_id: str | None = Field(default=None)
 
     # Provider API keys — optional here; adapters raise clearly when missing.
     gemini_api_key: str | None = Field(default=None)
@@ -141,6 +149,10 @@ class Settings(BaseSettings):
         default=2048,
         description="Per-call output token cap forwarded to LLM adapters.",
     )
+    llm_timeout_seconds: float = Field(
+        default=60.0,
+        description="Per-call LLM request timeout in seconds (LLM_TIMEOUT_SECONDS).",
+    )
     llm_primary: str = Field(
         default="vertex",
         description="Primary LLM provider name (vertex → gemini fallback order).",
@@ -158,6 +170,50 @@ class Settings(BaseSettings):
     # ── Observability ─────────────────────────────────────────────────────────
     log_level: Literal["debug", "info", "warning", "error", "critical"] = Field(default="info")
     sentry_dsn: str | None = Field(default=None)
+
+    # ── Cross-field validation (provider-mode cohesion) ───────────────────────
+    @property
+    def resolved_vertex_project(self) -> str:
+        """Vertex project, falling back to GCLOUD_PROJECT_ID when VERTEX_PROJECT is unset.
+
+        Lets a single SA-key dev `.env` (which already carries GCLOUD_PROJECT_ID)
+        drive Vertex mode without duplicating the project id.
+        """
+        return self.vertex_project or self.gcloud_project_id or ""
+
+    @property
+    def resolved_adc_credentials(self) -> str | None:
+        """Path to the ADC service-account key.
+
+        Prefers GOOGLE_APPLICATION_CREDENTIALS (the SDK's own var); falls back to
+        GOOGLE_SERVICE_ACCOUNT_KEY so the maintainers' `.env` works unchanged.
+        Returns ``None`` to defer to ambient ADC (gcloud / metadata server).
+        """
+        return self.google_application_credentials or self.google_service_account_key
+
+    @model_validator(mode="after")
+    def _validate_provider_cohesion(self) -> Settings:
+        # Vertex mode must be able to resolve a project id at config time.
+        if self.llm_provider == "vertex" and not self.resolved_vertex_project:
+            raise ValueError(
+                "LLM_PROVIDER=vertex requires a project id: set VERTEX_PROJECT "
+                "(or GCLOUD_PROJECT_ID) in your environment / .env."
+            )
+        # Embeddings dimension must be positive (vector-space safety).
+        if self.embeddings_dim <= 0:
+            raise ValueError(
+                f"EMBEDDINGS_DIM must be a positive integer, got {self.embeddings_dim}."
+            )
+        # Budget / token caps must be sane.
+        if self.llm_max_output_tokens <= 0:
+            raise ValueError(
+                f"LLM_MAX_OUTPUT_TOKENS must be positive, got {self.llm_max_output_tokens}."
+            )
+        if self.llm_timeout_seconds <= 0:
+            raise ValueError(
+                f"LLM_TIMEOUT_SECONDS must be positive, got {self.llm_timeout_seconds}."
+            )
+        return self
 
 
 # Module-level singleton — import `settings` for a pre-built instance, or

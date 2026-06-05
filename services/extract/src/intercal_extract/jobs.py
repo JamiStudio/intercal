@@ -91,9 +91,11 @@ async def extract_claims(
 
     Steps:
     1. Load `source_documents.normalized_text` for *document_id*.
-    2. Call `llm.extract_structured(CLAIMS_SCHEMA, text)`.
-    3. Validate response against schema.
-    4. Upsert validated claims into `claims` and `claim_evidence`.
+    2. Call `result = await llm.extract_structured(CLAIMS_SCHEMA, text)` — the W4
+       port validates the response against CLAIMS_SCHEMA and retries malformed
+       output, returning a `StructuredResult` (validated `.data` + token usage).
+    3. Upsert validated claims from `result.data` into `claims` and `claim_evidence`;
+       record `result.input_tokens` / `result.output_tokens` for usage accounting.
 
     Args:
         document_id: UUID of the normalised source document.

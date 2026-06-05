@@ -13,6 +13,7 @@
  */
 
 import type { Db } from '@intercal/core';
+import { Hono } from 'hono';
 import { describe, expect, it } from 'vitest';
 import { createApp } from './app.js';
 
@@ -66,6 +67,43 @@ describe('unknown route', () => {
     const { status, body } = await get('/completely-unknown');
     expect(status).toBe(404);
     expect(body).toMatchObject({ code: 'not_found' });
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Mounted under a prefix — production shape (dashboard does new Hono().route('/api', app))
+//
+// Hono lets the PARENT router own the `notFound` fallback, so a sub-app's `notFound` never
+// fires for unmatched sub-paths. These assert the JSON ApiError 404 still reaches the contract
+// surface when mounted, and that the scoped catch-all does NOT swallow a sibling surface
+// (e.g. the MCP server at `/api/mcp`).
+// ---------------------------------------------------------------------------
+
+describe('mounted under /api prefix', () => {
+  // biome-ignore lint/suspicious/noExplicitAny: null DB; these paths never reach the query layer
+  const mounted = new Hono().route('/api', createApp(null as any));
+
+  it('returns JSON 404 for an unknown /api/v1/* route (not Hono text/plain)', async () => {
+    const res = await mounted.request('http://localhost/api/v1/notaroute');
+    const body = (await res.json()) as Record<string, unknown>;
+    expect(res.status).toBe(404);
+    expect(res.headers.get('content-type')).toMatch('application/json');
+    expect(body).toMatchObject({ code: 'not_found' });
+  });
+
+  it('still serves a real /api/v1/* route shape (400 validation, not a swallowed 404)', async () => {
+    const res = await mounted.request('http://localhost/api/v1/entity');
+    const body = (await res.json()) as Record<string, unknown>;
+    expect(res.status).toBe(400);
+    expect(body.code).toBe('invalid_request');
+  });
+
+  it('does NOT intercept a sibling /api/mcp surface (scoped to /v1/*)', async () => {
+    // No /api/mcp is registered here, so it falls through to the parent's default 404 —
+    // proving createApp's catch-all did not claim the path. (text/plain, not JSON.)
+    const res = await mounted.request('http://localhost/api/mcp');
+    expect(res.status).toBe(404);
+    expect(res.headers.get('content-type') ?? '').not.toMatch('application/json');
   });
 });
 

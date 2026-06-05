@@ -103,7 +103,17 @@ export function createApp(db: Db): Hono {
   app.get('/v1/sources', route(db, 'SourcesQuery', getSources, sourcesGuard));
   app.get('/v1/freshness', route(db, 'FreshnessQuery', getFreshness));
 
-  // Return a JSON error body for unmatched routes instead of Hono's default text/plain 404.
+  // Unknown route on the contract surface (`/v1/*`) → JSON ApiError 404. This is a real matched
+  // route, not `app.notFound`, on purpose: in production the dashboard mounts this app under a
+  // prefix via `new Hono().route('/api', createApp(db))`, and Hono lets the PARENT own the
+  // `notFound` fallback — so a sub-app's `notFound` never fires for unmatched `/api/v1/*` and the
+  // surface would leak Hono's default text/plain `404 Not Found`. A scoped wildcard fires
+  // regardless of mount depth. It is deliberately limited to `/v1/*` so it can never intercept a
+  // sibling surface mounted under the same prefix (e.g. the MCP server at `/api/mcp`).
+  app.all('/v1/*', (c) => c.json(errorBody('not_found', 'Route not found'), 404));
+
+  // When the app is the top-level router (local `server.ts`, tests), `notFound` still renders a
+  // JSON ApiError for any unmatched path instead of Hono's default text/plain 404.
   app.notFound((c) => c.json(errorBody('not_found', 'Route not found'), 404));
 
   return app;

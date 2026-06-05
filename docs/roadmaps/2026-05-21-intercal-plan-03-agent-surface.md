@@ -180,7 +180,11 @@ Implementation tasks:
       leaking the DB-level `500 invalid input syntax for type uuid` (verified against prod).
 - [x] Consistent error taxonomy with JSON `ApiError` bodies and a central `onError`:
       400 invalid_request · 404 not_found · 501 not_implemented · 500 internal_error.
-- [x] JSON 404 for unmatched routes (replaces Hono's default `text/plain`).
+- [x] JSON 404 for unmatched routes (replaces Hono's default `text/plain`). Implemented as a
+      scoped `app.all('/v1/*', …)` catch-all plus `app.notFound` — the catch-all is required
+      because in production the app is mounted under a prefix (`new Hono().route('/api', app)`)
+      and Hono lets the parent own `notFound`, so a sub-app `notFound` never fires for unmatched
+      `/api/v1/*`. Scoped to `/v1/*` so it never intercepts the sibling `/api/mcp` (W3) surface.
 - [x] Health endpoint (`GET /health`) and OpenAPI document (`GET /openapi.json`).
 - [x] CORS on the read-only `/v1/*` surface (`origin:*`, GET/OPTIONS) for browser SDK/agent
       clients. Auth + rate limits are Plan 04 — left as clean seams, not implemented here.

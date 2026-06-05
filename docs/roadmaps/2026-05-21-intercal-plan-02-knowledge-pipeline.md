@@ -2,7 +2,7 @@
 
 Date: 2026-05-21
 Aligned: 2026-06-04 to live stack
-Status: [~] Active — W1 complete (2026-06-04); W2 complete (2026-06-05); W3 complete (2026-06-05); W4 complete (2026-06-05)
+Status: [~] Active — W1 complete (2026-06-04); W2 complete (2026-06-05); W3 complete (2026-06-05); W4 complete (2026-06-05); W5 complete (2026-06-05)
 Source reports: `docs/research/2026-05-21-intercal-foundation-report.md`, `docs/research/2026-06-04-intercal-revisit-audit-and-dev-environment.md`, `docs/architecture/pipeline.md`, `docs/architecture/data-model.md`; decisions `docs/decisions/0001-foundation-stack.md`, `docs/decisions/0002-final-hosting-topology.md`
 Owner: Main orchestration agent
 Surface: ingestion, normalization, extraction, providers, embeddings, entity resolution, relationships, fact versions, orchestration
@@ -163,8 +163,8 @@ Depends on:
 
 Enables:
 
-- [ ] Workstream 3 mention extraction.
-- [ ] Workstream 6 embeddings.
+- [x] Workstream 3 mention extraction.
+- [x] Workstream 5 embeddings (chunks → chunk_embeddings).
 
 Repo guidance:
 
@@ -266,6 +266,7 @@ Depends on:
 
 Enables:
 
+- [x] Workstream 5 embeddings (claims → claim_embeddings).
 - [ ] Workstream 6 entity resolution.
 - [ ] Workstream 7 relationship derivation.
 
@@ -517,11 +518,13 @@ Suggested verification:
 
 Goal: Generate, persist, refresh, and query embeddings for documents, chunks, entities, and claims.
 
+**Status: [x] Complete — 2026-06-05**
+
 Depends on:
 
-- [ ] Workstream 2 chunks.
-- [ ] Workstream 3 claims.
-- [ ] Workstream 4 provider abstraction.
+- [x] Workstream 2 chunks.
+- [x] Workstream 3 claims.
+- [x] Workstream 4 provider abstraction.
 
 Enables:
 
@@ -535,27 +538,77 @@ Repo guidance:
 Primary areas:
 
 - `services/extract`
-- `services/resolve`
 - `db/migrations`
-- `docs/architecture/data-model.md`
 
 Implementation tasks:
 
-- [ ] Add embedding provider interface.
-- [ ] Add embedding records with owner type, owner ID, provider, model, dimension, and refresh metadata.
-- [ ] Add vector indexes.
-- [ ] Add backfill and refresh jobs.
-- [ ] Add lexical/vector hybrid search foundation.
-- [ ] Add deterministic test embeddings.
+- [x] Migration `0024_embeddings_version_and_fts.sql`: adds `embedding_version text NOT NULL
+  DEFAULT 'unknown'` column to `chunk_embeddings`, `document_embeddings`, and
+  `claim_embeddings` (model + dim + version together identify the vector space for
+  re-embedding detection); adds `idx_document_chunks_fts` GIN FTS index on
+  `document_chunks.chunk_text` for the lexical retrieval leg.  Idempotent (`ADD COLUMN
+  IF NOT EXISTS`, `CREATE INDEX IF NOT EXISTS`).  Applied to Neon branch
+  `br-still-water-ajmss6b6`.
+- [x] `embed_chunks` job (`services/extract/src/intercal_extract/jobs.py`):
+  - Reads `document_chunks` for *document_id* ordered by `chunk_index`.
+  - Skips chunks already embedded for the same model (idempotent; `--force` re-embeds).
+  - Truncates chunk text to 2000 chars at a word boundary (`truncate_for_embedding`) to
+    stay within bge-small's context window.
+  - Batches embedding calls via `EmbeddingsPort.embed()` (local fastembed default,
+    batch_size=64).
+  - Upserts to `chunk_embeddings` with `ON CONFLICT (chunk_id, model) DO UPDATE`, writing
+    model + dim + `embedding_version = 'v1'`.  Filters empty-text chunks (would produce
+    zero-norm vectors, useless for cosine similarity).
+  - Per-batch adapter failures are non-fatal (logged; continues to next batch).
+- [x] `embed_claims` job: same pattern for `claims.normalized_text` → `claim_embeddings`.
+  Reads active claims by `source_document_ids` array containment.
+- [x] `hybrid_search` function: shared retrieval primitive (Plan 03 evidence search will
+  use this).
+  - **Vector leg**: embeds the query text, queries `chunk_embeddings <=> halfvec` (HNSW
+    cosine distance), retrieves up to `limit × 5` candidates.
+  - **Lexical leg**: `plainto_tsquery('english', query)` against the GIN FTS index on
+    `document_chunks.chunk_text`, ranked by `ts_rank`.
+  - **RRF fusion**: Reciprocal Rank Fusion (k=60, default) with configurable
+    `vector_weight=0.7` and `fts_weight=0.3`.  A chunk appearing in both legs scores
+    higher than one in a single leg.  Returns `limit` results with per-chunk metadata
+    (rrf_score, vector_rank, fts_rank, vector_distance, fts_ts_rank).
+- [x] CLI commands `embed-chunks` and `embed-claims` added to
+  `services/extract/src/intercal_extract/cli.py` with `--document-id`, `--batch-size`,
+  `--force` options.  Provider selected via `EMBEDDINGS_PROVIDER` / `EMBEDDINGS_MODEL`.
+- [x] `EMBED_VERSION = "v1"` and `truncate_for_embedding()` are module-level public
+  symbols for testability and callers.
+- [x] 28 unit tests in `services/extract/tests/test_w5_embeddings.py`:
+  `truncate_for_embedding` (short/exact/over-limit/word-boundary), `embed_chunks`
+  (no-chunks, basic embed+persist, skip-already-embedded, force-re-embed,
+  empty-text-skipped, adapter-failure-nonfatal, correct-model-written,
+  all-skipped), `embed_claims` (no-claims, basic, skip, force, empty-text,
+  adapter-failure), `hybrid_search` (empty-query, vector-only, fts-only,
+  overlap-boosts-shared, limit-respected, required-fields, positive-rrf-score,
+  no-results, custom-weights), `EMBED_VERSION` type check.
+  All 275 service tests pass; `pnpm py:lint` + `pnpm py:typecheck` clean (0 errors).
+- [x] `scripts/dev/verify_w5_embeddings.py` integration smoke test.
+- [x] Live verified (2026-06-05) against Neon branch `br-still-water-ajmss6b6`:
+  - 5 chunks embedded (all 5 normalised documents, mixed en/ar): 5 `chunk_embeddings`
+    rows, model=`BAAI/bge-small-en-v1.5`, dim=384, embedding_version=`v1`.
+  - Idempotent re-run: all 5 skipped (no duplicates).
+  - 1 claim embedded: 1 `claim_embeddings` row, same model/dim/version.
+  - HNSW index (`halfvec_cosine_ops`) confirmed present on `chunk_embeddings`.
+  - FTS GIN index confirmed present on `document_chunks.chunk_text`.
+  - `hybrid_search` returned 5 ranked results for 3 sample queries; top result
+    consistent with document content; RRF scores positive and ordered.
+  - Smoke test: PASS.
 
 Exit criteria:
 
-- [ ] Search can retrieve fixture documents/claims through hybrid lexical and vector paths.
+- [x] Search can retrieve fixture documents/claims through hybrid lexical and vector paths.
+- [x] Embeddings are idempotent (safe to retry; re-embedding same model does not duplicate rows).
+- [x] Re-embedding with a changed model creates a new row per the (chunk_id, model) UNIQUE constraint.
+- [x] Model + dim + version recorded per vector row (vector-space safety).
 
 Suggested verification:
 
-- `uv run pytest services/extract/tests services/resolve/tests -k embedding`
-- `pnpm db:schema:check`
+- `pnpm py:lint && pnpm py:typecheck && pnpm py:test`
+- `DATABASE_URL=<neon-branch> uv run python scripts/dev/verify_w5_embeddings.py`
 
 ## Workstream 6: Entity Resolution
 

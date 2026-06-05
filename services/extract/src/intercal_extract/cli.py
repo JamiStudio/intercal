@@ -102,6 +102,100 @@ def extract_claims_cmd(
     asyncio.run(_run())
 
 
+@app.command("embed-chunks")
+def embed_chunks_cmd(
+    document_id: str = typer.Option(
+        ..., "--document-id", help="UUID of the normalised source document."
+    ),
+    batch_size: int = typer.Option(
+        64,
+        "--batch-size",
+        help="Number of chunks to embed in each adapter call (default 64).",
+    ),
+    force: bool = typer.Option(
+        False,
+        "--force",
+        help="Re-embed chunks even when an up-to-date embedding already exists.",
+    ),
+) -> None:
+    """Embed document_chunks for a document via the EmbeddingsPort adapter.
+
+    Upserts to chunk_embeddings with model + dim + version metadata.
+    Idempotent — skips chunks that already have a current-model embedding
+    unless --force is passed.
+    Provider selected via EMBEDDINGS_PROVIDER / EMBEDDINGS_MODEL env vars.
+    """
+    cfg = _get_settings()
+    _setup_logging(cfg.log_level)
+
+    async def _run() -> None:
+        from intercal_shared.db import get_pool
+        from intercal_shared.factory import make_embeddings
+
+        from intercal_extract.jobs import embed_chunks
+
+        pool = await get_pool(cfg.database_url)
+        emb = make_embeddings(cfg)
+        counters = await embed_chunks(
+            document_id=document_id,
+            pool=pool,
+            embeddings=emb,
+            batch_size=batch_size,
+            force=force,
+        )
+        _log.info("embed-chunks complete: %s", counters)
+
+    _log = logging.getLogger(__name__)
+    asyncio.run(_run())
+
+
+@app.command("embed-claims")
+def embed_claims_cmd(
+    document_id: str = typer.Option(
+        ..., "--document-id", help="UUID of the source document whose claims to embed."
+    ),
+    batch_size: int = typer.Option(
+        64,
+        "--batch-size",
+        help="Number of claims to embed in each adapter call (default 64).",
+    ),
+    force: bool = typer.Option(
+        False,
+        "--force",
+        help="Re-embed claims even when an up-to-date embedding already exists.",
+    ),
+) -> None:
+    """Embed claim normalized_text for claims from a document via the EmbeddingsPort adapter.
+
+    Upserts to claim_embeddings with model + dim + version metadata.
+    Idempotent — skips claims that already have a current-model embedding
+    unless --force is passed.
+    Provider selected via EMBEDDINGS_PROVIDER / EMBEDDINGS_MODEL env vars.
+    """
+    cfg = _get_settings()
+    _setup_logging(cfg.log_level)
+
+    async def _run() -> None:
+        from intercal_shared.db import get_pool
+        from intercal_shared.factory import make_embeddings
+
+        from intercal_extract.jobs import embed_claims
+
+        pool = await get_pool(cfg.database_url)
+        emb = make_embeddings(cfg)
+        counters = await embed_claims(
+            document_id=document_id,
+            pool=pool,
+            embeddings=emb,
+            batch_size=batch_size,
+            force=force,
+        )
+        _log.info("embed-claims complete: %s", counters)
+
+    _log = logging.getLogger(__name__)
+    asyncio.run(_run())
+
+
 def main() -> None:
     app()
 

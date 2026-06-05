@@ -23,6 +23,19 @@ W3 scope:
     CLAIMS_SCHEMA.  Writes to ``claims``, ``claim_evidence`` with source spans
     that trace each claim back to its chunk and character range.
 
+W5 scope:
+    ``embed_chunks`` — embed ``document_chunks`` via ``EmbeddingsPort``, upsert
+    to ``chunk_embeddings`` with model + dim + version metadata.  Idempotent:
+    re-embedding with the same model does an UPDATE; a changed model is written
+    as a new row (UNIQUE on (chunk_id, model)).
+
+    ``embed_claims`` — embed ``claims.normalized_text`` via ``EmbeddingsPort``,
+    upsert to ``claim_embeddings`` with model + dim + version metadata.
+
+    ``hybrid_search`` — vector similarity (cosine / HNSW) + lexical (GIN FTS)
+    merged by Reciprocal Rank Fusion (RRF).  Shared retrieval primitive for the
+    query layer and Plan 03 evidence search.
+
     Entity resolution (W6/W7/W8) and relationship derivation are deferred
     with explicit ``NotImplementedError`` stubs.
 """
@@ -915,6 +928,535 @@ async def derive_relationships(
         "Plan 02 W7/W8 — derive_relationships: relationship derivation "
         "and fact version writing not yet implemented."
     )
+
+
+# ──────────────────────────────────────────────────────────────────────────────
+# Workstream 5: embed_chunks
+# ──────────────────────────────────────────────────────────────────────────────
+
+# Short version tag written alongside every vector row so re-embedding can be
+# detected without inspecting the full model weights.
+EMBED_VERSION = "v1"
+
+# Maximum character length to embed per chunk.  bge-small's context window is
+# 512 tokens ≈ ~2000 chars of English text.  Longer chunks are truncated to
+# avoid overflowing the model context and silently degrading embedding quality.
+EMBED_MAX_CHARS = 2000
+
+
+def truncate_for_embedding(text: str, max_chars: int = EMBED_MAX_CHARS) -> str:
+    """Truncate *text* to *max_chars* characters at a word boundary.
+
+    Avoids mid-word cuts while honouring the embedding context window limit.
+    """
+    if len(text) <= max_chars:
+        return text
+    truncated = text[:max_chars]
+    last_space = truncated.rfind(" ")
+    return truncated[:last_space] if last_space > max_chars // 2 else truncated
+
+
+async def embed_chunks(
+    *,
+    document_id: str,
+    pool: Any,
+    embeddings: Any,
+    batch_size: int = 64,
+    force: bool = False,
+) -> dict[str, int]:
+    """Embed ``document_chunks`` for *document_id* and persist to ``chunk_embeddings``.
+
+    Reads all chunks for *document_id* from ``document_chunks``.  For each chunk
+    that does not yet have an embedding (or all chunks when *force=True*), embeds
+    the ``chunk_text`` via *embeddings* (an ``EmbeddingsPort`` implementation) and
+    upserts to ``chunk_embeddings``.
+
+    Idempotent semantics:
+    - Same model run twice: ``ON CONFLICT (chunk_id, model) DO UPDATE`` refreshes
+      the vector and updates the version.  No duplicate rows.
+    - Changed model (different ``embeddings.model`` string): creates a new row
+      (the UNIQUE constraint is on ``(chunk_id, model)``); old-model rows remain
+      until an explicit purge pass.
+    - *force=False* (default): skips chunks that already have a ``chunk_embeddings``
+      row for this exact model.  Use *force=True* to re-embed after a runtime
+      version change.
+
+    Args:
+        document_id: UUID of the source document whose chunks to embed.
+        pool: asyncpg connection pool.
+        embeddings: EmbeddingsPort adapter (model, dim, embed).
+        batch_size: Number of chunks to embed in a single adapter call.
+        force: If True, re-embeds chunks even when a current-model row exists.
+
+    Returns:
+        Dict with counters: ``chunks_total``, ``chunks_skipped``, ``chunks_embedded``,
+        ``vectors_persisted``.
+    """
+    _log.info(
+        "embed_chunks: document_id=%s model=%s force=%s",
+        document_id,
+        embeddings.model,
+        force,
+    )
+
+    doc_id = uuid.UUID(document_id)
+    model_name: str = embeddings.model
+    dim: int = embeddings.dim
+
+    # ── 1. Load all chunks for this document ──────────────────────────────────
+    chunks = await pool.fetch(
+        """
+        SELECT id, chunk_index, chunk_text
+        FROM document_chunks
+        WHERE document_id = $1
+        ORDER BY chunk_index
+        """,
+        doc_id,
+    )
+
+    if not chunks:
+        _log.info("embed_chunks: document %s has no chunks; 0 vectors", document_id)
+        return {
+            "chunks_total": 0,
+            "chunks_skipped": 0,
+            "chunks_embedded": 0,
+            "vectors_persisted": 0,
+        }
+
+    # ── 2. Filter already-embedded chunks (unless force=True) ─────────────────
+    already_embedded: set[uuid.UUID] = set()
+    if not force:
+        existing = await pool.fetch(
+            """
+            SELECT chunk_id FROM chunk_embeddings
+            WHERE chunk_id = ANY($1::uuid[])
+              AND model = $2
+            """,
+            [c["id"] for c in chunks],
+            model_name,
+        )
+        already_embedded = {row["chunk_id"] for row in existing}
+
+    to_embed = [c for c in chunks if c["id"] not in already_embedded]
+    skipped = len(chunks) - len(to_embed)
+
+    if not to_embed:
+        _log.info(
+            "embed_chunks: document %s all %d chunks already embedded; skipping",
+            document_id,
+            len(chunks),
+        )
+        return {
+            "chunks_total": len(chunks),
+            "chunks_skipped": skipped,
+            "chunks_embedded": 0,
+            "vectors_persisted": 0,
+        }
+
+    # ── 3. Embed in batches ───────────────────────────────────────────────────
+    persisted = 0
+    embedded_count = 0
+
+    for batch_start in range(0, len(to_embed), batch_size):
+        batch = to_embed[batch_start : batch_start + batch_size]
+        texts = [truncate_for_embedding(str(c["chunk_text"] or "")) for c in batch]
+
+        # Filter empty texts — empty strings produce zero-norm vectors that are
+        # meaningless for cosine similarity and corrupt HNSW recall.
+        valid_pairs = [(c, t) for c, t in zip(batch, texts, strict=False) if t.strip()]
+        if not valid_pairs:
+            continue
+
+        valid_chunks, valid_texts = zip(*valid_pairs, strict=False)
+
+        try:
+            vectors = await embeddings.embed(list(valid_texts))
+        except Exception as exc:
+            _log.warning(
+                "embed_chunks: embeddings adapter failed for batch at %d: %s; skipping",
+                batch_start,
+                exc,
+            )
+            continue
+
+        if len(vectors) != len(valid_chunks):
+            _log.warning(
+                "embed_chunks: expected %d vectors, got %d; skipping batch",
+                len(valid_chunks),
+                len(vectors),
+            )
+            continue
+
+        embedded_count += len(vectors)
+
+        # ── 4. Upsert each vector ─────────────────────────────────────────────
+        for chunk, vector in zip(valid_chunks, vectors, strict=False):
+            # Convert to Postgres halfvec literal string: '[f1,f2,...,fn]'
+            vec_literal = "[" + ",".join(f"{v:.8f}" for v in vector) + "]"
+            try:
+                await pool.execute(
+                    """
+                    INSERT INTO chunk_embeddings
+                        (chunk_id, model, dim, embedding, embedding_version)
+                    VALUES ($1, $2, $3, $4::halfvec, $5)
+                    ON CONFLICT (chunk_id, model) DO UPDATE
+                        SET embedding = EXCLUDED.embedding,
+                            dim = EXCLUDED.dim,
+                            embedding_version = EXCLUDED.embedding_version,
+                            created_at = now()
+                    """,
+                    chunk["id"],
+                    model_name,
+                    dim,
+                    vec_literal,
+                    EMBED_VERSION,
+                )
+                persisted += 1
+            except Exception as db_exc:
+                _log.warning(
+                    "embed_chunks: DB upsert failed for chunk %s: %s",
+                    chunk["id"],
+                    db_exc,
+                )
+
+    counters = {
+        "chunks_total": len(chunks),
+        "chunks_skipped": skipped,
+        "chunks_embedded": embedded_count,
+        "vectors_persisted": persisted,
+    }
+    _log.info("embed_chunks: document_id=%s %s", document_id, counters)
+    return counters
+
+
+# ──────────────────────────────────────────────────────────────────────────────
+# Workstream 5: embed_claims
+# ──────────────────────────────────────────────────────────────────────────────
+
+
+async def embed_claims(
+    *,
+    document_id: str,
+    pool: Any,
+    embeddings: Any,
+    batch_size: int = 64,
+    force: bool = False,
+) -> dict[str, int]:
+    """Embed ``claims.normalized_text`` for claims from *document_id* and persist
+    to ``claim_embeddings``.
+
+    Reads all active claims for *document_id* from ``claims`` (via
+    ``source_document_ids`` array containment).  Embeds ``normalized_text`` and
+    upserts to ``claim_embeddings`` with model + dim + version metadata.
+
+    Idempotent — same upsert semantics as ``embed_chunks``.
+
+    Args:
+        document_id: UUID of the source document whose claims to embed.
+        pool: asyncpg connection pool.
+        embeddings: EmbeddingsPort adapter.
+        batch_size: Batch size for the embeddings adapter call.
+        force: Re-embed claims even when a current-model row already exists.
+
+    Returns:
+        Dict with counters: ``claims_total``, ``claims_skipped``, ``claims_embedded``,
+        ``vectors_persisted``.
+    """
+    _log.info(
+        "embed_claims: document_id=%s model=%s force=%s",
+        document_id,
+        embeddings.model,
+        force,
+    )
+
+    doc_id = uuid.UUID(document_id)
+    model_name: str = embeddings.model
+    dim: int = embeddings.dim
+
+    # ── 1. Load claims for this document ──────────────────────────────────────
+    claims = await pool.fetch(
+        """
+        SELECT id, normalized_text
+        FROM claims
+        WHERE $1 = ANY(source_document_ids)
+          AND status = 'active'
+        ORDER BY created_at
+        """,
+        doc_id,
+    )
+
+    if not claims:
+        _log.info("embed_claims: document %s has no active claims; 0 vectors", document_id)
+        return {
+            "claims_total": 0,
+            "claims_skipped": 0,
+            "claims_embedded": 0,
+            "vectors_persisted": 0,
+        }
+
+    # ── 2. Filter already-embedded claims ────────────────────────────────────
+    already_embedded: set[uuid.UUID] = set()
+    if not force:
+        existing = await pool.fetch(
+            """
+            SELECT claim_id FROM claim_embeddings
+            WHERE claim_id = ANY($1::uuid[])
+              AND model = $2
+            """,
+            [c["id"] for c in claims],
+            model_name,
+        )
+        already_embedded = {row["claim_id"] for row in existing}
+
+    to_embed = [c for c in claims if c["id"] not in already_embedded]
+    skipped = len(claims) - len(to_embed)
+
+    if not to_embed:
+        _log.info(
+            "embed_claims: document %s all %d claims already embedded; skipping",
+            document_id,
+            len(claims),
+        )
+        return {
+            "claims_total": len(claims),
+            "claims_skipped": skipped,
+            "claims_embedded": 0,
+            "vectors_persisted": 0,
+        }
+
+    # ── 3. Embed in batches ───────────────────────────────────────────────────
+    persisted = 0
+    embedded_count = 0
+
+    for batch_start in range(0, len(to_embed), batch_size):
+        batch = to_embed[batch_start : batch_start + batch_size]
+        texts = [truncate_for_embedding(str(c["normalized_text"] or "")) for c in batch]
+
+        valid_pairs = [(c, t) for c, t in zip(batch, texts, strict=False) if t.strip()]
+        if not valid_pairs:
+            continue
+
+        valid_claims, valid_texts = zip(*valid_pairs, strict=False)
+
+        try:
+            vectors = await embeddings.embed(list(valid_texts))
+        except Exception as exc:
+            _log.warning(
+                "embed_claims: embeddings adapter failed for batch at %d: %s; skipping",
+                batch_start,
+                exc,
+            )
+            continue
+
+        if len(vectors) != len(valid_claims):
+            _log.warning(
+                "embed_claims: expected %d vectors, got %d; skipping batch",
+                len(valid_claims),
+                len(vectors),
+            )
+            continue
+
+        embedded_count += len(vectors)
+
+        for claim, vector in zip(valid_claims, vectors, strict=False):
+            vec_literal = "[" + ",".join(f"{v:.8f}" for v in vector) + "]"
+            try:
+                await pool.execute(
+                    """
+                    INSERT INTO claim_embeddings
+                        (claim_id, model, dim, embedding, embedding_version, embedded_text)
+                    VALUES ($1, $2, $3, $4::halfvec, $5, $6)
+                    ON CONFLICT (claim_id, model) DO UPDATE
+                        SET embedding = EXCLUDED.embedding,
+                            dim = EXCLUDED.dim,
+                            embedding_version = EXCLUDED.embedding_version,
+                            embedded_text = EXCLUDED.embedded_text,
+                            created_at = now()
+                    """,
+                    claim["id"],
+                    model_name,
+                    dim,
+                    vec_literal,
+                    EMBED_VERSION,
+                    str(claim["normalized_text"] or "")[:2000],
+                )
+                persisted += 1
+            except Exception as db_exc:
+                _log.warning(
+                    "embed_claims: DB upsert failed for claim %s: %s",
+                    claim["id"],
+                    db_exc,
+                )
+
+    counters = {
+        "claims_total": len(claims),
+        "claims_skipped": skipped,
+        "claims_embedded": embedded_count,
+        "vectors_persisted": persisted,
+    }
+    _log.info("embed_claims: document_id=%s %s", document_id, counters)
+    return counters
+
+
+# ──────────────────────────────────────────────────────────────────────────────
+# Workstream 5: hybrid_search
+# ──────────────────────────────────────────────────────────────────────────────
+
+# Default RRF rank-fusion constant (k=60 is a well-established default from the
+# original Cormack et al. paper and is used widely in hybrid search systems).
+_RRF_K = 60
+
+
+async def hybrid_search(
+    *,
+    query: str,
+    pool: Any,
+    embeddings: Any,
+    limit: int = 10,
+    rrf_k: int = _RRF_K,
+    vector_weight: float = 0.7,
+    fts_weight: float = 0.3,
+) -> list[dict[str, Any]]:
+    """Hybrid chunk retrieval: vector similarity (HNSW cosine) + lexical (GIN FTS).
+
+    Retrieves candidate chunks from ``document_chunks`` using two complementary
+    signals and merges them via Reciprocal Rank Fusion (RRF):
+
+    1. **Vector leg** — embeds *query* via *embeddings* and queries
+       ``chunk_embeddings`` with ``<=>`` cosine distance (HNSW index).
+       Returns up to ``limit * 5`` candidates.
+
+    2. **Lexical leg** — converts *query* to a ``tsquery`` and searches
+       ``document_chunks`` using the GIN FTS index on ``chunk_text``.
+       Returns up to ``limit * 5`` candidates with ``ts_rank``.
+
+    3. **RRF fusion** — assigns each candidate a reciprocal-rank score
+       ``1 / (rrf_k + rank)`` from each leg that returned it, sums them,
+       and returns the top *limit* chunks by fused score.
+
+    Args:
+        query: The search query (free-form text).
+        pool: asyncpg connection pool.
+        embeddings: EmbeddingsPort adapter — used to embed the query.
+        limit: Number of results to return (default 10).
+        rrf_k: RRF constant (default 60).  Higher values reduce the influence
+            of high-ranked items and produce smoother fusion.
+        vector_weight: Weight multiplier for the vector leg's RRF score.
+            Combined with ``fts_weight`` to tune signal balance.
+        fts_weight: Weight multiplier for the lexical leg's RRF score.
+
+    Returns:
+        List of result dicts (ordered by descending fused score), each with:
+        - ``chunk_id``   — UUID of the matched chunk.
+        - ``document_id`` — UUID of the parent document.
+        - ``chunk_index`` — 0-based chunk ordinal within the document.
+        - ``chunk_text``  — the chunk's text content.
+        - ``rrf_score``   — fused Reciprocal Rank Fusion score.
+        - ``vector_rank`` — rank from the vector leg (1-based; None if absent).
+        - ``fts_rank``    — rank from the lexical leg (1-based; None if absent).
+        - ``vector_distance`` — cosine distance from the vector leg (0=identical, 2=orthogonal).
+        - ``fts_ts_rank`` — raw ts_rank score from the lexical leg.
+
+    Raises:
+        EmbeddingsError: if the query embedding call fails.
+    """
+    if not query.strip():
+        return []
+
+    pool_size_hint = limit * 5  # over-retrieve; RRF narrows to limit
+
+    # ── 1. Vector leg ─────────────────────────────────────────────────────────
+    query_vector = (await embeddings.embed([query]))[0]
+    vec_literal = "[" + ",".join(f"{v:.8f}" for v in query_vector) + "]"
+
+    vector_rows = await pool.fetch(
+        """
+        SELECT
+            dc.id          AS chunk_id,
+            dc.document_id,
+            dc.chunk_index,
+            dc.chunk_text,
+            (ce.embedding <=> $1::halfvec) AS distance
+        FROM chunk_embeddings ce
+        JOIN document_chunks dc ON dc.id = ce.chunk_id
+        WHERE ce.model = $2
+        ORDER BY ce.embedding <=> $1::halfvec
+        LIMIT $3
+        """,
+        vec_literal,
+        embeddings.model,
+        pool_size_hint,
+    )
+
+    # ── 2. Lexical (FTS) leg ──────────────────────────────────────────────────
+    # Convert query to tsquery using plainto_tsquery for natural-language input.
+    # This handles multi-word queries without requiring the user to use |/& operators.
+    fts_rows = await pool.fetch(
+        """
+        SELECT
+            dc.id          AS chunk_id,
+            dc.document_id,
+            dc.chunk_index,
+            dc.chunk_text,
+            ts_rank(to_tsvector('english', dc.chunk_text),
+                    plainto_tsquery('english', $1)) AS ts_rank_score
+        FROM document_chunks dc
+        WHERE to_tsvector('english', dc.chunk_text)
+              @@ plainto_tsquery('english', $1)
+        ORDER BY ts_rank_score DESC
+        LIMIT $2
+        """,
+        query,
+        pool_size_hint,
+    )
+
+    # ── 3. RRF fusion ─────────────────────────────────────────────────────────
+    # Build per-chunk metadata + rank maps.
+    chunk_meta: dict[str, dict[str, Any]] = {}
+
+    for rank, row in enumerate(vector_rows, start=1):
+        cid = str(row["chunk_id"])
+        chunk_meta.setdefault(
+            cid,
+            {
+                "chunk_id": cid,
+                "document_id": str(row["document_id"]),
+                "chunk_index": row["chunk_index"],
+                "chunk_text": row["chunk_text"],
+                "vector_rank": None,
+                "fts_rank": None,
+                "vector_distance": None,
+                "fts_ts_rank": None,
+                "rrf_score": 0.0,
+            },
+        )
+        chunk_meta[cid]["vector_rank"] = rank
+        chunk_meta[cid]["vector_distance"] = float(row["distance"])
+        chunk_meta[cid]["rrf_score"] += vector_weight / (rrf_k + rank)
+
+    for rank, row in enumerate(fts_rows, start=1):
+        cid = str(row["chunk_id"])
+        chunk_meta.setdefault(
+            cid,
+            {
+                "chunk_id": cid,
+                "document_id": str(row["document_id"]),
+                "chunk_index": row["chunk_index"],
+                "chunk_text": row["chunk_text"],
+                "vector_rank": None,
+                "fts_rank": None,
+                "vector_distance": None,
+                "fts_ts_rank": None,
+                "rrf_score": 0.0,
+            },
+        )
+        chunk_meta[cid]["fts_rank"] = rank
+        chunk_meta[cid]["fts_ts_rank"] = float(row["ts_rank_score"])
+        chunk_meta[cid]["rrf_score"] += fts_weight / (rrf_k + rank)
+
+    # Sort by descending RRF score and return top *limit* results.
+    results = sorted(chunk_meta.values(), key=lambda r: r["rrf_score"], reverse=True)
+    return results[:limit]
 
 
 # ──────────────────────────────────────────────────────────────────────────────

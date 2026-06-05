@@ -63,6 +63,40 @@ def resolve_entities_cmd(
     asyncio.run(_run())
 
 
+@app.command("link-claim-entities")
+def link_claim_entities_cmd(
+    batch_size: int = typer.Option(
+        200, "--batch-size", help="Max claims to process per run."
+    ),
+    use_embeddings: bool = typer.Option(
+        True,
+        "--embeddings/--no-embeddings",
+        help="Use the configured embeddings adapter for similarity-based linking.",
+    ),
+) -> None:
+    """Link claim subject/object surface text to resolved canonical entities.
+
+    Bridges W3 claims → W6 resolved entities so W7 can derive relationships.
+    Idempotent: existing links are kept unless a higher-confidence link is found.
+    """
+    cfg = _get_settings()
+    _setup_logging(cfg.log_level)
+
+    async def _run() -> None:
+        from intercal_shared.db import get_pool
+        from intercal_shared.factory import make_embeddings
+
+        from intercal_resolve.jobs import link_claim_entities
+
+        pool = await get_pool(cfg.database_url)
+        emb = make_embeddings(cfg) if use_embeddings else None
+
+        counters = await link_claim_entities(pool=pool, embeddings=emb, batch_size=batch_size)
+        print(f"link-claim-entities: {counters}")
+
+    asyncio.run(_run())
+
+
 @app.command("derive-relationships")
 def derive_relationships_cmd(
     claim_id: str = typer.Option(..., "--claim-id", help="UUID of the claim to process."),

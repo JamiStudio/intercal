@@ -48,11 +48,16 @@ from intercal_resolve.jobs import (
     COSINE_MERGE_THRESHOLD,
     COSINE_REVIEW_THRESHOLD,
     EXACT_MATCH_CONFIDENCE,
+    LINK_COSINE_THRESHOLD,
+    LINK_EMBEDDING_MIN_CONFIDENCE,
+    LINK_EXACT_MENTION_CONFIDENCE,
+    LINK_EXACT_NAME_CONFIDENCE,
     MIN_CLAIM_CONFIDENCE,
     MIN_MENTION_CONFIDENCE,
     derive_relationships,
     detect_external_id,
     find_external_id_collisions,
+    link_claim_entities,
     map_predicate_to_type,
     normalize_name,
     ordered_pair,
@@ -1579,6 +1584,358 @@ async def test_resolve_entities_external_id_collision_auto_merges() -> None:
     assert reparent and reparent[0][0] == e_low and reparent[0][1] == e_high
     # Survivor's freshness signal bumped (getEntity reads last_updated_at).
     assert any("SET LAST_UPDATED_AT = NOW()" in s for s in sqls)
+
+
+# ──────────────────────────────────────────────────────────────────────────────
+# link_claim_entities — unit tests
+# ──────────────────────────────────────────────────────────────────────────────
+
+
+def _make_link_pool(
+    *,
+    claims: list[dict[str, Any]] | None = None,
+    mention_row: dict[str, Any] | None = None,
+    name_row: dict[str, Any] | None = None,
+    alias_row: dict[str, Any] | None = None,
+    live_entity_row: dict[str, Any] | None = None,
+    emb_rows: list[dict[str, Any]] | None = None,
+) -> FakePool:
+    """Build a FakePool wired for link_claim_entities tests."""
+
+    class LinkPool(FakePool):
+        async def fetch(self, sql: str, *args: Any) -> list[Any]:
+            sql_upper = " ".join(sql.split()).upper()
+            if "FROM CLAIMS" in sql_upper and "SUBJECT_ENTITY_ID IS NULL" in sql_upper:
+                return [_FakeRecord(c) for c in (claims or [])]
+            if "FROM ENTITY_EMBEDDINGS EE" in sql_upper:
+                return [_FakeRecord(r) for r in (emb_rows or [])]
+            return []
+
+        async def fetchrow(self, sql: str, *args: Any) -> Any | None:
+            sql_upper = " ".join(sql.split()).upper()
+            # Exact mention-span lookup
+            if "FROM MENTIONS M" in sql_upper and "DOCUMENT_ID = ANY" in sql_upper:
+                return _FakeRecord(mention_row) if mention_row else None
+            # Live entity check (after mention lookup)
+            if "FROM ENTITIES WHERE ID = $1 AND IS_DEPRECATED = FALSE" in sql_upper:
+                return _FakeRecord(live_entity_row) if live_entity_row else None
+            # Canonical name lookup
+            if "LOWER(CANONICAL_NAME) = $1" in sql_upper and "ENTITY_ALIASES" not in sql_upper:
+                return _FakeRecord(name_row) if name_row else None
+            # Alias lookup
+            if "FROM ENTITY_ALIASES EA" in sql_upper:
+                return _FakeRecord(alias_row) if alias_row else None
+            return None
+
+    return LinkPool()
+
+
+@pytest.mark.asyncio
+async def test_link_claim_entities_no_unlinked_claims() -> None:
+    """No claims with NULL entity ends → all counters zero."""
+    pool = _make_link_pool(claims=[])
+    counters = await link_claim_entities(pool=pool, embeddings=None)
+    assert counters["claims_loaded"] == 0
+    assert counters["claims_updated"] == 0
+
+
+@pytest.mark.asyncio
+async def test_link_claim_entities_exact_mention_span_links_subject() -> None:
+    """Subject text exactly matches a resolved mention in the same document."""
+    claim_id = uuid.uuid4()
+    entity_id = uuid.uuid4()
+    doc_id = uuid.uuid4()
+
+    pool = _make_link_pool(
+        claims=[{
+            "id": claim_id,
+            "subject_text": "Sebastián Ramírez",
+            "object_text": "FastAPI",
+            "subject_entity_id": None,
+            "object_entity_id": None,
+            "source_document_ids": [doc_id],
+            "extraction_confidence": 0.90,
+            "metadata": {},
+        }],
+        mention_row={"entity_id": entity_id},
+        live_entity_row={"id": entity_id},
+    )
+
+    counters = await link_claim_entities(pool=pool, embeddings=None)
+
+    assert counters["subject_linked"] >= 1
+    assert counters["claims_updated"] >= 1
+    # Verify UPDATE was issued with the resolved entity_id
+    updates = [
+        args for sql, args in pool.executed
+        if "UPDATE CLAIMS" in " ".join(sql.split()).upper()
+    ]
+    assert updates, "UPDATE claims must have been called"
+    # First positional arg is new_subject_entity_id
+    assert updates[0][0] == entity_id
+
+
+@pytest.mark.asyncio
+async def test_link_claim_entities_exact_name_links_object() -> None:
+    """Object text matches a live entity's canonical_name — links via exact_name."""
+    claim_id = uuid.uuid4()
+    entity_id = uuid.uuid4()
+    doc_id = uuid.uuid4()
+
+    class NamePool(FakePool):
+        async def fetch(self, sql: str, *args: Any) -> list[Any]:
+            sql_upper = " ".join(sql.split()).upper()
+            if "FROM CLAIMS" in sql_upper and "SUBJECT_ENTITY_ID IS NULL" in sql_upper:
+                return [_FakeRecord({
+                    "id": claim_id,
+                    "subject_text": "tiangolo",
+                    "object_text": "FastAPI",
+                    "subject_entity_id": uuid.uuid4(),  # already linked
+                    "object_entity_id": None,
+                    "source_document_ids": [doc_id],
+                    "extraction_confidence": 0.85,
+                    "metadata": {},
+                })]
+            return []
+
+        async def fetchrow(self, sql: str, *args: Any) -> Any | None:
+            sql_upper = " ".join(sql.split()).upper()
+            if "FROM MENTIONS M" in sql_upper and "DOCUMENT_ID = ANY" in sql_upper:
+                return None  # no exact mention match
+            if "LOWER(CANONICAL_NAME) = $1" in sql_upper and "ENTITY_ALIASES" not in sql_upper:
+                return _FakeRecord({"id": entity_id})
+            if "FROM ENTITY_ALIASES EA" in sql_upper:
+                return None
+            return None
+
+    pool = NamePool()
+    counters = await link_claim_entities(pool=pool, embeddings=None)
+
+    assert counters["object_linked"] >= 1
+    updates = [
+        args for sql, args in pool.executed
+        if "UPDATE CLAIMS" in " ".join(sql.split()).upper()
+    ]
+    assert updates
+    # Second positional arg is new_object_entity_id
+    assert updates[0][1] == entity_id
+
+
+@pytest.mark.asyncio
+async def test_link_claim_entities_alias_links_entity() -> None:
+    """Surface text matches an entity alias → linked via exact_alias."""
+    claim_id = uuid.uuid4()
+    entity_id = uuid.uuid4()
+    doc_id = uuid.uuid4()
+
+    pool = _make_link_pool(
+        claims=[{
+            "id": claim_id,
+            "subject_text": "Rust",
+            "object_text": "systems language",
+            "subject_entity_id": None,
+            "object_entity_id": None,
+            "source_document_ids": [doc_id],
+            "extraction_confidence": 0.80,
+            "metadata": {},
+        }],
+        mention_row=None,
+        live_entity_row=None,
+        name_row=None,
+        alias_row={"id": entity_id},  # alias match
+    )
+
+    counters = await link_claim_entities(pool=pool, embeddings=None)
+    assert counters["subject_linked"] >= 1
+
+
+@pytest.mark.asyncio
+async def test_link_claim_entities_no_match_leaves_null() -> None:
+    """No match for any method → entity ends stay NULL, claim not updated."""
+    claim_id = uuid.uuid4()
+    doc_id = uuid.uuid4()
+
+    pool = _make_link_pool(
+        claims=[{
+            "id": claim_id,
+            "subject_text": "completely unknown entity xyz",
+            "object_text": "another mystery entity",
+            "subject_entity_id": None,
+            "object_entity_id": None,
+            "source_document_ids": [doc_id],
+            "extraction_confidence": 0.70,
+            "metadata": {},
+        }],
+        mention_row=None,
+        live_entity_row=None,
+        name_row=None,
+        alias_row=None,
+        emb_rows=[],
+    )
+
+    counters = await link_claim_entities(pool=pool, embeddings=None)
+    assert counters["subject_linked"] == 0
+    assert counters["object_linked"] == 0
+    assert counters["claims_updated"] == 0
+    # No UPDATE should have been issued
+    updates = [
+        sql for sql, _ in pool.executed
+        if "UPDATE CLAIMS" in " ".join(sql.split()).upper()
+    ]
+    assert updates == []
+
+
+@pytest.mark.asyncio
+async def test_link_claim_entities_idempotent_same_confidence() -> None:
+    """Re-running when entity ends are already NULL (no link) is a no-op."""
+    pool = _make_link_pool(claims=[])
+    c1 = await link_claim_entities(pool=pool, embeddings=None)
+    c2 = await link_claim_entities(pool=pool, embeddings=None)
+    assert c1 == c2
+    assert c1["claims_updated"] == 0
+
+
+@pytest.mark.asyncio
+async def test_link_claim_entities_skips_low_embedding_distance() -> None:
+    """Embedding distance > LINK_COSINE_THRESHOLD → no link (conservative)."""
+    claim_id = uuid.uuid4()
+    doc_id = uuid.uuid4()
+    entity_id = uuid.uuid4()
+
+    mock_emb = MagicMock()
+    mock_emb.model = "BAAI/bge-small-en-v1.5"
+    mock_emb.dim = 384
+    mock_emb.embed = AsyncMock(return_value=[[0.0] * 384])
+
+    pool = _make_link_pool(
+        claims=[{
+            "id": claim_id,
+            "subject_text": "ambiguous entity",
+            "object_text": "other entity",
+            "subject_entity_id": None,
+            "object_entity_id": None,
+            "source_document_ids": [doc_id],
+            "extraction_confidence": 0.75,
+            "metadata": {},
+        }],
+        mention_row=None,
+        live_entity_row=None,
+        name_row=None,
+        alias_row=None,
+        # Distance = 0.20 > LINK_COSINE_THRESHOLD (0.10) → must not link
+        emb_rows=[{"entity_id": entity_id, "distance": 0.20}],
+    )
+
+    counters = await link_claim_entities(pool=pool, embeddings=mock_emb)
+    assert counters["subject_linked"] == 0
+    assert counters["claims_updated"] == 0
+
+
+@pytest.mark.asyncio
+async def test_link_claim_entities_embedding_high_similarity_links() -> None:
+    """Embedding distance ≤ LINK_COSINE_THRESHOLD → link written."""
+    claim_id = uuid.uuid4()
+    doc_id = uuid.uuid4()
+    entity_id = uuid.uuid4()
+
+    mock_emb = MagicMock()
+    mock_emb.model = "BAAI/bge-small-en-v1.5"
+    mock_emb.dim = 384
+    mock_emb.embed = AsyncMock(return_value=[[0.0] * 384])
+
+    pool = _make_link_pool(
+        claims=[{
+            "id": claim_id,
+            "subject_text": "rust-lang",
+            "object_text": "something",
+            "subject_entity_id": None,
+            "object_entity_id": None,
+            "source_document_ids": [doc_id],
+            "extraction_confidence": 0.80,
+            "metadata": {},
+        }],
+        mention_row=None,
+        live_entity_row=None,
+        name_row=None,
+        alias_row=None,
+        # Distance = 0.05 ≤ LINK_COSINE_THRESHOLD (0.10) → must link
+        emb_rows=[{"entity_id": entity_id, "distance": 0.05}],
+    )
+
+    counters = await link_claim_entities(pool=pool, embeddings=mock_emb)
+    assert counters["subject_linked"] >= 1
+    assert counters["claims_updated"] >= 1
+
+
+@pytest.mark.asyncio
+async def test_link_claim_entities_provenance_written_to_metadata() -> None:
+    """claim_entity_links provenance is written into claims.metadata."""
+    claim_id = uuid.uuid4()
+    entity_id = uuid.uuid4()
+    doc_id = uuid.uuid4()
+
+    pool = _make_link_pool(
+        claims=[{
+            "id": claim_id,
+            "subject_text": "FastAPI",
+            "object_text": "web framework",
+            "subject_entity_id": None,
+            "object_entity_id": None,
+            "source_document_ids": [doc_id],
+            "extraction_confidence": 0.90,
+            "metadata": {},
+        }],
+        mention_row={"entity_id": entity_id},
+        live_entity_row={"id": entity_id},
+    )
+
+    await link_claim_entities(pool=pool, embeddings=None)
+
+    # Verify the UPDATE was called with metadata JSON containing provenance
+    updates = [
+        args for sql, args in pool.executed
+        if "UPDATE CLAIMS" in " ".join(sql.split()).upper()
+    ]
+    assert updates
+    # Third positional arg ($3) is the metadata JSON string
+    meta_json = updates[0][2]
+    meta = json.loads(meta_json)
+    assert "claim_entity_links" in meta
+    subj_prov = meta["claim_entity_links"].get("subject", {})
+    assert subj_prov.get("method") == "exact_mention_span"
+    assert subj_prov.get("linked_by") == "link_claim_entities_v1"
+    assert "confidence" in subj_prov
+
+
+@pytest.mark.asyncio
+async def test_link_claim_entities_counter_shape() -> None:
+    """Return dict contains all expected counter keys."""
+    pool = _make_link_pool(claims=[])
+    result = await link_claim_entities(pool=pool, embeddings=None)
+    expected_keys = {
+        "claims_loaded",
+        "subject_linked",
+        "object_linked",
+        "subject_skipped",
+        "object_skipped",
+        "claims_updated",
+    }
+    assert set(result.keys()) == expected_keys
+
+
+def test_link_constants_are_conservative() -> None:
+    """Claim linking thresholds must be stricter than W6 entity resolution."""
+    assert LINK_COSINE_THRESHOLD < COSINE_MERGE_THRESHOLD
+    assert LINK_EXACT_MENTION_CONFIDENCE >= 0.85
+    assert LINK_EXACT_NAME_CONFIDENCE >= 0.80
+    assert LINK_EMBEDDING_MIN_CONFIDENCE >= 0.75
+
+
+def test_cli_link_claim_entities_in_help() -> None:
+    runner = CliRunner()
+    result = runner.invoke(app, ["--help"])
+    assert result.exit_code == 0
+    assert "link-claim-entities" in result.output
 
 
 @pytest.mark.asyncio

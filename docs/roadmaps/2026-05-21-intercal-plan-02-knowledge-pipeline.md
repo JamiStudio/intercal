@@ -2,7 +2,7 @@
 
 Date: 2026-05-21
 Aligned: 2026-06-04 to live stack
-Status: [~] Active — W1 complete (2026-06-04); W2 complete (2026-06-05); W3 complete (2026-06-05); W4 complete (2026-06-05); W5 complete (2026-06-05); W6 complete (2026-06-05); W7 complete (2026-06-05)
+Status: [~] Active — W1 complete (2026-06-04); W2 complete (2026-06-05); W3 complete (2026-06-05); W4 complete (2026-06-05); W5 complete (2026-06-05); W6 complete (2026-06-05); W7 complete (2026-06-05); claim-entity linking complete (2026-06-05)
 Source reports: `docs/research/2026-05-21-intercal-foundation-report.md`, `docs/research/2026-06-04-intercal-revisit-audit-and-dev-environment.md`, `docs/architecture/pipeline.md`, `docs/architecture/data-model.md`; decisions `docs/decisions/0001-foundation-stack.md`, `docs/decisions/0002-final-hosting-topology.md`
 Owner: Main orchestration agent
 Surface: ingestion, normalization, extraction, providers, embeddings, entity resolution, relationships, fact versions, orchestration
@@ -867,6 +867,84 @@ Suggested verification:
 
 - `pnpm py:lint && pnpm py:typecheck && pnpm py:test`
 - `DATABASE_URL=<neon-branch> uv run python scripts/dev/verify_w7_relationships.py`
+
+## Claim-Entity Linking Fix (W3→W6→W7 bridge)
+
+**Status: [x] Complete — 2026-06-05**
+
+**Context:** W7's audit (pass 2) surfaced an end-to-end gap: W3 leaves
+`claims.subject_entity_id` / `claims.object_entity_id` NULL, and W7's mention-fallback
+in `_resolve_claim_entity_id` requires an exact `text_span` match against resolved
+mentions — but the LLM's claim surface form often differs from the NER mention span that
+created the entity. Result: W7 correctly skips almost every real claim (correct: it never
+fabricates ends), producing ~0 relationships on real data.
+
+**Fix:** Added `link_claim_entities` job to `services/resolve/src/intercal_resolve/jobs.py`
+(runs after `resolve_entities`, before `derive_relationships`):
+
+- **Three match strategies** (most → least precise):
+  1. Exact mention-span overlap: resolved `mentions.text_span` (case-insensitive) in the
+     same source document. Confidence 0.90.
+  2. Alias / exact canonical-name match across all live entities (type-agnostic).
+     Confidence 0.85.
+  3. Embedding cosine similarity with `LINK_COSINE_THRESHOLD = 0.10` (stricter than W6's
+     0.15 merge threshold). Confidence 0.80 × (1 − distance).
+- **Conservative by design:** if no method finds a confident match → leave NULL (never
+  fabricate a link; a wrong link corrupts the relationship graph exactly as a false entity
+  merge does).
+- **Idempotency:** existing links are kept when the new candidate's confidence is not
+  higher; provenance written to `claims.metadata["claim_entity_links"]` per end (method,
+  confidence, linked_by actor tag `link_claim_entities_v1`).
+- **CLI:** `python -m intercal_resolve link-claim-entities [--batch-size N]
+  [--embeddings/--no-embeddings]` added to `services/resolve/src/intercal_resolve/cli.py`.
+
+Also extended `map_predicate_to_type` predicate vocabulary:
+- Added `"is_a"` → `entity_instance_of_concept` (W3 sometimes extracts snake_case predicates).
+- Added `"located_in"` → `organization_headquartered_in`.
+
+Implementation tasks:
+
+- [x] `link_claim_entities` job in `services/resolve/src/intercal_resolve/jobs.py` with
+  helper `_link_one_end`.
+- [x] `link-claim-entities` CLI command in `services/resolve/src/intercal_resolve/cli.py`.
+- [x] 12 new unit tests covering: no unlinked claims, exact mention span links subject,
+  exact name links object, alias link, no-match leaves NULL, idempotent re-run, embedding
+  distance > threshold not linked, embedding distance ≤ threshold linked, provenance in
+  metadata, counter shape, constants are conservative, CLI help includes command.
+- [x] `scripts/dev/verify_claim_linking.py` integration smoke test.
+- [x] Predicate vocabulary extended (`is_a`, `located_in`).
+- [x] All 345 service tests pass; `pnpm py:lint` + `pnpm py:typecheck` clean (0 errors).
+- [x] **Live verified (2026-06-05)** on throwaway Neon branch (forked from
+  `br-still-water-ajmss6b6`, deleted after):
+  - Source: 5 real Wikidata documents (W2-normalized), LLM extraction via Vertex AI
+    `gemini-2.5-flash` (real HTTP, no mocks).
+  - W3: 5 active claims extracted (real LLM output).
+  - W6: 17 live entities, 12 mentions resolved.
+  - `link_claim_entities`: 2 fully-linked claims (subject + object both resolved);
+    methods: `exact_mention_span`, `embedding_cosine`, `exact_name`. 5 claims had at
+    least one end linked (`claims_updated=5`). Provenance written to metadata.
+  - W7 `derive_relationships`: **1 relationship written** (`entity_instance_of_concept`,
+    `P31 is_a Q5`), claim_ids provenance set, confidence=1.00.
+  - W7 `write_fact_versions`: 3 new fact versions written (append-only: prior versions
+    superseded, not deleted). 19 total in DB.
+  - **Idempotent re-run**: link re-run → 0 changes (fully-linked count stable at 2);
+    derive re-run → 0 new relationships (total stable at 1). Both passes: PASS.
+  - Throwaway branch deleted after verification.
+
+Exit criteria:
+
+- [x] `link_claim_entities` correctly populates `claims.subject_entity_id` /
+  `claims.object_entity_id` from real W3 output, enabling W7 to derive relationships.
+- [x] Claims with both ends linked produce ≥1 real relationship from genuinely-extracted
+  claims (no synthetic data).
+- [x] Provenance recorded per claim end (method, confidence, actor).
+- [x] Idempotent: re-running does not churn links or duplicate relationships.
+- [x] Conservative: wrong-confidence links never overwrite better-evidence links.
+
+Suggested verification:
+
+- `pnpm py:lint && pnpm py:typecheck && pnpm py:test`
+- `DATABASE_URL=<neon-branch> uv run python scripts/dev/verify_claim_linking.py`
 
 ## Workstream 8: Pipeline Orchestration
 

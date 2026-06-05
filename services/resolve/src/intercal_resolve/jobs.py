@@ -122,8 +122,9 @@ _PREDICATE_TO_TYPE: list[tuple[list[str], str]] = [
      "company_acquired_company"),
     (["merged", "merger", "merged_with"],
      "company_merged_with_company"),
-    # Organization ↔ place (HQ)
-    (["headquartered", "hq", "based in", "located in", "offices in"],
+    # Organization ↔ place (HQ / location)
+    (["headquartered", "hq", "based in", "located in", "located_in",
+      "offices in", "is located"],
      "organization_headquartered_in"),
     # Legislation
     (["amends", "supersedes", "amends_law", "replaces law"],
@@ -137,7 +138,7 @@ _PREDICATE_TO_TYPE: list[tuple[list[str], str]] = [
     (["reported", "stated", "claimed", "reported_claim", "source_reported"],
      "source_reported_claim"),
     # Concept
-    (["instance of", "is a", "type of", "entity_instance"],
+    (["instance of", "is a", "is_a", "type of", "entity_instance"],
      "entity_instance_of_concept"),
     (["related to", "concept_related"],
      "concept_related_to_concept"),
@@ -1502,6 +1503,391 @@ def payload_equal(a: dict[str, Any], b: dict[str, Any]) -> bool:
 
 # Internal alias
 _payload_equal = payload_equal
+
+
+# ──────────────────────────────────────────────────────────────────────────────
+# link_claim_entities
+# ──────────────────────────────────────────────────────────────────────────────
+
+# Actor tag written into claims.metadata.claim_entity_links provenance.
+_LINK_ACTOR = "link_claim_entities_v1"
+
+# Conservative confidence floors for each link method.
+# Claim entity linking is NOT entity merging — a wrong link corrupts the
+# relationship graph (W7 produces a false triple).  Be MORE conservative here
+# than W6 entity resolution: we only write a link when we are highly confident.
+#
+# Exact mention-span overlap (same doc, same text_span): very high confidence.
+LINK_EXACT_MENTION_CONFIDENCE = 0.90
+# Alias / exact-name lexical match across the entity table: high confidence.
+LINK_EXACT_NAME_CONFIDENCE = 0.85
+# Embedding cosine similarity: minimum confidence to record a link.
+# Only fire when distance is well below the W6 COSINE_MERGE_THRESHOLD (0.15)
+# so we stay strictly more conservative than entity resolution.
+LINK_EMBEDDING_MIN_CONFIDENCE = 0.80
+# Cosine distance threshold for claim entity linking (stricter than W6).
+LINK_COSINE_THRESHOLD = 0.10  # distance ≤ this → link; above → NULL (conservative)
+
+
+async def _link_one_end(
+    pool: Any,
+    *,
+    claim_id: uuid.UUID,
+    surface_text: str,
+    source_document_ids: list[uuid.UUID],
+    embeddings: Any | None,
+) -> tuple[uuid.UUID | None, float, str]:
+    """Find the best resolved entity for a claim subject or object surface text.
+
+    Returns ``(entity_id, confidence, method)`` where *entity_id* may be ``None``
+    if no confident link can be found.  Caller must respect the NULL — never
+    fabricate a link.
+
+    Resolution order (most → least precise):
+    1. Exact mention-span overlap: find a resolved ``mentions`` row whose
+       ``text_span`` matches *surface_text* (case-insensitive) and whose
+       ``document_id`` is in ``source_document_ids``.
+    2. Alias / exact canonical-name match: look up any live entity by
+       exact normalized name or alias, type-agnostic (claim ends can be any type).
+    3. Embedding cosine similarity against entity_embeddings: only if distance
+       ≤ ``LINK_COSINE_THRESHOLD`` (0.10 — stricter than W6's 0.15).
+    """
+    norm_text = normalize_name(surface_text)
+
+    # ── 1. Exact mention-span overlap ─────────────────────────────────────────
+    if source_document_ids:
+        row = await pool.fetchrow(
+            """
+            SELECT m.entity_id
+            FROM mentions m
+            WHERE m.document_id = ANY($1)
+              AND lower(m.text_span) = $2
+              AND m.resolution_status = 'resolved'
+              AND m.entity_id IS NOT NULL
+            ORDER BY m.extraction_confidence DESC
+            LIMIT 1
+            """,
+            source_document_ids,
+            norm_text,
+        )
+        if row and row["entity_id"]:
+            # Confirm entity still live (not deprecated by a later merge).
+            live = await pool.fetchrow(
+                "SELECT id FROM entities WHERE id = $1 AND is_deprecated = false",
+                uuid.UUID(str(row["entity_id"])),
+            )
+            if live:
+                return (
+                    uuid.UUID(str(row["entity_id"])),
+                    LINK_EXACT_MENTION_CONFIDENCE,
+                    "exact_mention_span",
+                )
+
+    # ── 2. Alias / exact canonical-name match (type-agnostic) ────────────────
+    # Check canonical_name first, then entity_aliases.
+    name_row = await pool.fetchrow(
+        """
+        SELECT id FROM entities
+        WHERE lower(canonical_name) = $1
+          AND is_deprecated = false
+        LIMIT 1
+        """,
+        norm_text,
+    )
+    if name_row:
+        return (
+            uuid.UUID(str(name_row["id"])),
+            LINK_EXACT_NAME_CONFIDENCE,
+            "exact_name",
+        )
+    alias_row = await pool.fetchrow(
+        """
+        SELECT e.id
+        FROM entity_aliases ea
+        JOIN entities e ON e.id = ea.entity_id
+        WHERE lower(ea.alias) = $1
+          AND e.is_deprecated = false
+        LIMIT 1
+        """,
+        norm_text,
+    )
+    if alias_row:
+        return (
+            uuid.UUID(str(alias_row["id"])),
+            LINK_EXACT_NAME_CONFIDENCE,
+            "exact_alias",
+        )
+
+    # ── 3. Embedding cosine similarity ────────────────────────────────────────
+    if embeddings is not None:
+        try:
+            vectors = await embeddings.embed([surface_text])
+            if vectors:
+                vec = vectors[0]
+                vec_literal = "[" + ",".join(f"{v:.8f}" for v in vec) + "]"
+                emb_rows = await pool.fetch(
+                    """
+                    SELECT ee.entity_id, (ee.embedding <=> $1::halfvec) AS distance
+                    FROM entity_embeddings ee
+                    JOIN entities e ON e.id = ee.entity_id
+                    WHERE e.is_deprecated = false
+                      AND ee.model = $2
+                    ORDER BY ee.embedding <=> $1::halfvec
+                    LIMIT 1
+                    """,
+                    vec_literal,
+                    embeddings.model,
+                )
+                if emb_rows:
+                    best_dist = float(emb_rows[0]["distance"])
+                    if best_dist <= LINK_COSINE_THRESHOLD:
+                        confidence = round(
+                            LINK_EMBEDDING_MIN_CONFIDENCE * (1.0 - best_dist), 2
+                        )
+                        return (
+                            uuid.UUID(str(emb_rows[0]["entity_id"])),
+                            confidence,
+                            "embedding_cosine",
+                        )
+        except Exception as exc:
+            _log.debug("_link_one_end: embedding lookup failed for %r: %s", surface_text, exc)
+
+    return (None, 0.0, "none")
+
+
+async def link_claim_entities(
+    *,
+    pool: Any,
+    embeddings: Any | None = None,
+    batch_size: int = 200,
+    min_confidence: float | None = None,
+) -> dict[str, int]:
+    """Link claim subject/object surface text to resolved canonical entities.
+
+    This step bridges W3 (claims) → W6 (resolved entities) → W7 (relationships).
+    W3 leaves ``claims.subject_entity_id`` / ``claims.object_entity_id`` NULL
+    because the LLM's claim surface form often differs from the NER mention span
+    that created the entity (e.g. ``"PR #15589"`` vs. ``"PR [#15589](…/pull/…)"``).
+    W7's ``derive_relationships`` skip-not-fabricate contract means almost all real
+    claims produce zero relationships without this linking step.
+
+    Algorithm
+    ---------
+    For each active claim with at least one NULL entity end:
+    1. **Exact mention-span overlap** — find a resolved ``mentions`` row whose
+       ``text_span`` matches the claim's subject or object text (case-insensitive)
+       and whose ``document_id`` is in the claim's ``source_document_ids``.
+       Confidence: ``LINK_EXACT_MENTION_CONFIDENCE`` (0.90).
+    2. **Alias / exact canonical-name** — look up any live entity by exact
+       normalized canonical name or alias, type-agnostic.
+       Confidence: ``LINK_EXACT_NAME_CONFIDENCE`` (0.85).
+    3. **Embedding cosine similarity** — embed the surface text and search
+       ``entity_embeddings``; only link when distance ≤ ``LINK_COSINE_THRESHOLD``
+       (0.10 — stricter than W6's 0.15).
+       Confidence: scaled by ``LINK_EMBEDDING_MIN_CONFIDENCE * (1 - distance)``.
+
+    If no method produces a confident link, the end is left NULL.
+    **Never fabricate a link — a wrong link corrupts the relationship graph.**
+
+    Idempotency
+    -----------
+    - If an entity end is already set AND the existing provenance confidence is ≥
+      the new candidate's confidence, the link is left untouched (no churn).
+    - If the new candidate is higher confidence (e.g. from a fresh embedding pass),
+      the link is updated and provenance replaced.
+    - Re-running on a claim with both ends already linked at equal or higher
+      confidence is a no-op (no DB write).
+
+    Provenance
+    ----------
+    Every link is recorded in ``claims.metadata`` under ``claim_entity_links``:
+    ``{"subject": {"method": ..., "confidence": ..., "linked_by": ...},
+       "object":  {"method": ..., "confidence": ..., "linked_by": ...}}``.
+
+    Args:
+        pool: asyncpg connection pool.
+        embeddings: Optional EmbeddingsPort adapter for similarity-based linking.
+            When ``None``, only exact-mention and lexical/alias methods run.
+        batch_size: Maximum number of claims to process per call.
+        min_confidence: Minimum confidence to write a link (default: uses
+            ``LINK_EMBEDDING_MIN_CONFIDENCE`` as the floor for embedding links;
+            exact matches always write).
+
+    Returns:
+        Dict with counters:
+        ``claims_loaded``, ``subject_linked``, ``object_linked``,
+        ``subject_skipped``, ``object_skipped``, ``claims_updated``.
+    """
+    _log.info(
+        "link_claim_entities: batch_size=%d embeddings=%s",
+        batch_size,
+        embeddings is not None,
+    )
+
+    counters: dict[str, int] = {
+        "claims_loaded": 0,
+        "subject_linked": 0,
+        "object_linked": 0,
+        "subject_skipped": 0,
+        "object_skipped": 0,
+        "claims_updated": 0,
+    }
+
+    # ── 1. Load active claims with at least one NULL entity end ───────────────
+    claims = await pool.fetch(
+        """
+        SELECT id, subject_text, object_text,
+               subject_entity_id, object_entity_id,
+               source_document_ids, extraction_confidence,
+               metadata
+        FROM claims
+        WHERE status = 'active'
+          AND (subject_entity_id IS NULL OR object_entity_id IS NULL)
+        ORDER BY extraction_confidence DESC, created_at
+        LIMIT $1
+        """,
+        batch_size,
+    )
+
+    counters["claims_loaded"] = len(claims)
+    if not claims:
+        _log.info("link_claim_entities: no unlinked claims found")
+        return counters
+
+    _log.info("link_claim_entities: loaded %d claims with unlinked ends", len(claims))
+
+    for row in claims:
+        claim_id = uuid.UUID(str(row["id"]))
+        subject_text = str(row["subject_text"] or "").strip()
+        object_text = str(row["object_text"] or "").strip()
+        raw_doc_ids: list[Any] = list(row["source_document_ids"] or [])
+        source_document_ids: list[uuid.UUID] = [uuid.UUID(str(d)) for d in raw_doc_ids]
+
+        # Load existing metadata (preserve other keys).
+        existing_meta_raw = row["metadata"]
+        if isinstance(existing_meta_raw, str):
+            try:
+                existing_meta: dict[str, Any] = json.loads(existing_meta_raw)
+            except Exception:
+                existing_meta = {}
+        elif isinstance(existing_meta_raw, dict):
+            existing_meta = dict(existing_meta_raw)
+        else:
+            existing_meta = {}
+
+        link_provenance: dict[str, Any] = dict(
+            existing_meta.get("claim_entity_links", {})
+        )
+
+        new_subject_id: uuid.UUID | None = (
+            uuid.UUID(str(row["subject_entity_id"]))
+            if row["subject_entity_id"]
+            else None
+        )
+        new_object_id: uuid.UUID | None = (
+            uuid.UUID(str(row["object_entity_id"]))
+            if row["object_entity_id"]
+            else None
+        )
+
+        subject_changed = False
+        object_changed = False
+
+        # ── 2a. Link subject end if NULL ──────────────────────────────────────
+        if new_subject_id is None and subject_text:
+            entity_id, confidence, method = await _link_one_end(
+                pool,
+                claim_id=claim_id,
+                surface_text=subject_text,
+                source_document_ids=source_document_ids,
+                embeddings=embeddings,
+            )
+            if entity_id is not None:
+                # Idempotency: only write if improving or new.
+                existing_prov = link_provenance.get("subject", {})
+                existing_conf = float(existing_prov.get("confidence", 0.0))
+                if confidence >= existing_conf:
+                    new_subject_id = entity_id
+                    link_provenance["subject"] = {
+                        "method": method,
+                        "confidence": round(confidence, 3),
+                        "linked_by": _LINK_ACTOR,
+                    }
+                    subject_changed = True
+                    counters["subject_linked"] += 1
+                    _log.debug(
+                        "link_claim_entities: claim %s subject %r → entity %s "
+                        "(method=%s conf=%.3f)",
+                        claim_id, subject_text, entity_id, method, confidence,
+                    )
+            else:
+                counters["subject_skipped"] += 1
+                _log.debug(
+                    "link_claim_entities: claim %s subject %r — no confident link",
+                    claim_id, subject_text,
+                )
+
+        # ── 2b. Link object end if NULL ───────────────────────────────────────
+        if new_object_id is None and object_text:
+            entity_id, confidence, method = await _link_one_end(
+                pool,
+                claim_id=claim_id,
+                surface_text=object_text,
+                source_document_ids=source_document_ids,
+                embeddings=embeddings,
+            )
+            if entity_id is not None:
+                existing_prov = link_provenance.get("object", {})
+                existing_conf = float(existing_prov.get("confidence", 0.0))
+                if confidence >= existing_conf:
+                    new_object_id = entity_id
+                    link_provenance["object"] = {
+                        "method": method,
+                        "confidence": round(confidence, 3),
+                        "linked_by": _LINK_ACTOR,
+                    }
+                    object_changed = True
+                    counters["object_linked"] += 1
+                    _log.debug(
+                        "link_claim_entities: claim %s object %r → entity %s "
+                        "(method=%s conf=%.3f)",
+                        claim_id, object_text, entity_id, method, confidence,
+                    )
+            else:
+                counters["object_skipped"] += 1
+                _log.debug(
+                    "link_claim_entities: claim %s object %r — no confident link",
+                    claim_id, object_text,
+                )
+
+        # ── 3. Persist updated entity links ───────────────────────────────────
+        if subject_changed or object_changed:
+            updated_meta = {**existing_meta, "claim_entity_links": link_provenance}
+            try:
+                await pool.execute(
+                    """
+                    UPDATE claims
+                    SET subject_entity_id = $1,
+                        object_entity_id  = $2,
+                        metadata          = $3::jsonb,
+                        updated_at        = now()
+                    WHERE id = $4
+                      AND status = 'active'
+                    """,
+                    new_subject_id,
+                    new_object_id,
+                    json.dumps(updated_meta),
+                    claim_id,
+                )
+                counters["claims_updated"] += 1
+            except Exception as exc:
+                _log.warning(
+                    "link_claim_entities: DB update failed for claim %s: %s",
+                    claim_id, exc,
+                )
+
+    _log.info("link_claim_entities: %s", counters)
+    return counters
 
 
 async def write_fact_versions(

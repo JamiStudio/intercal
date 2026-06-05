@@ -10,11 +10,13 @@ CREATE TABLE IF NOT EXISTS entity_aliases (
     language    text        NOT NULL DEFAULT 'en',    -- BCP 47
     is_primary  boolean     NOT NULL DEFAULT false,   -- hint: preferred alternative display name
     source      text,                                 -- where this alias came from, e.g. 'wikidata', 'extraction'
-    created_at  timestamptz NOT NULL DEFAULT now(),
-
-    -- Prevent inserting the same alias string twice for the same entity
-    CONSTRAINT uq_entity_alias UNIQUE (entity_id, lower(alias), language)
+    created_at  timestamptz NOT NULL DEFAULT now()
 );
+
+-- Prevent inserting the same alias string twice for the same entity.
+-- Postgres requires a unique INDEX (not a table constraint) for expression keys like lower().
+CREATE UNIQUE INDEX IF NOT EXISTS uq_entity_alias
+    ON entity_aliases (entity_id, lower(alias), language);
 
 CREATE INDEX IF NOT EXISTS idx_entity_aliases_entity_id   ON entity_aliases (entity_id);
 -- Search: find entity by alias (case-insensitive)

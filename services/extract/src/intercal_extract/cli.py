@@ -39,19 +39,25 @@ def extract_mentions_cmd(
 ) -> None:
     """Extract entity mention spans from a normalised document.
 
+    Reads source_documents.cleaned_text and document_chunks.
     Idempotent — existing mentions are replaced on each run.
+    Applies rule-based NER; augments with LLM when LLM_PROVIDER is configured.
     """
     cfg = _get_settings()
     _setup_logging(cfg.log_level)
 
     async def _run() -> None:
         from intercal_shared.db import get_pool
+        from intercal_shared.factory import make_llm
 
         from intercal_extract.jobs import extract_mentions
 
         pool = await get_pool(cfg.database_url)
-        await extract_mentions(document_id=document_id, pool=pool)
+        llm = make_llm(cfg)
+        counters = await extract_mentions(document_id=document_id, pool=pool, llm=llm)
+        _log.info("extract-mentions complete: %s", counters)
 
+    _log = logging.getLogger(__name__)
     asyncio.run(_run())
 
 
@@ -60,11 +66,21 @@ def extract_claims_cmd(
     document_id: str = typer.Option(
         ..., "--document-id", help="UUID of the normalised source document."
     ),
+    max_chunks: int = typer.Option(
+        20,
+        "--max-chunks",
+        help=(
+            "Maximum number of document chunks to extract claims from in one run. "
+            "Defaults to 20. Set lower when testing to limit LLM spend."
+        ),
+    ),
 ) -> None:
     """Extract atomic factual claims from a normalised document via the LLM adapter.
 
+    Reads source_documents.cleaned_text and document_chunks.
     Idempotent — existing claims are replaced on each run.
     LLM provider is selected via LLM_PROVIDER / LLM_MODEL env vars.
+    Source spans (chunk_id + char offsets) are stored for full provenance.
     """
     cfg = _get_settings()
     _setup_logging(cfg.log_level)
@@ -77,8 +93,12 @@ def extract_claims_cmd(
 
         pool = await get_pool(cfg.database_url)
         llm = make_llm(cfg)
-        await extract_claims(document_id=document_id, pool=pool, llm=llm)
+        counters = await extract_claims(
+            document_id=document_id, pool=pool, llm=llm, max_chunks=max_chunks
+        )
+        _log.info("extract-claims complete: %s", counters)
 
+    _log = logging.getLogger(__name__)
     asyncio.run(_run())
 
 

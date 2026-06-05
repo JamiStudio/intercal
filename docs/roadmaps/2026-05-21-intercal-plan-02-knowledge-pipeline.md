@@ -2,7 +2,7 @@
 
 Date: 2026-05-21
 Aligned: 2026-06-04 to live stack
-Status: [~] Active — W1 complete (2026-06-04); W2 complete (2026-06-05); W4 complete (2026-06-05)
+Status: [~] Active — W1 complete (2026-06-04); W2 complete (2026-06-05); W3 complete (2026-06-05); W4 complete (2026-06-05)
 Source reports: `docs/research/2026-05-21-intercal-foundation-report.md`, `docs/research/2026-06-04-intercal-revisit-audit-and-dev-environment.md`, `docs/architecture/pipeline.md`, `docs/architecture/data-model.md`; decisions `docs/decisions/0001-foundation-stack.md`, `docs/decisions/0002-final-hosting-topology.md`
 Owner: Main orchestration agent
 Surface: ingestion, normalization, extraction, providers, embeddings, entity resolution, relationships, fact versions, orchestration
@@ -257,41 +257,94 @@ Suggested verification:
 
 Goal: Extract validated mentions and atomic claims from normalized documents.
 
+**Status: [x] Complete — 2026-06-05**
+
 Depends on:
 
-- [ ] Workstream 2 normalized chunks.
-- [ ] Plan 01 claim and mention contracts.
+- [x] Workstream 2 normalized chunks (`document_chunks`, `cleaned_text`).
+- [x] Plan 01 claim and mention contracts (`mentions`, `claims`, `claim_evidence` schema).
 
 Enables:
 
-- [ ] Workstream 7 entity resolution.
-- [ ] Workstream 8 relationship derivation.
+- [ ] Workstream 6 entity resolution.
+- [ ] Workstream 7 relationship derivation.
 
 Repo guidance:
 
+- Inputs are `source_documents.cleaned_text` + `document_chunks` (NOT `normalized_text` —
+  the old docstring was wrong; corrected here).
 - Mentions are evidence candidates, not canonical entities.
 
 Primary areas:
 
 - `services/extract`
-- `packages/shared`
-- `docs/architecture/data-model.md`
+- `db/migrations` (0012, 0013)
 
 Implementation tasks:
 
-- [ ] Add mention extraction for people, organizations, places, roles/offices, products, concepts, events, legislation, sources, and technical artifacts.
-- [ ] Add claim extraction with subject, predicate, object, qualifiers, valid time, source spans, confidence, and extraction method.
-- [ ] Add invalid-output quarantine for malformed model results.
-- [ ] Add contradiction candidate key extraction.
+- [x] Add `MENTIONS_SCHEMA` and `CLAIMS_SCHEMA` JSON Schemas in `services/extract/src/intercal_extract/jobs.py`
+  for structured LLM extraction with server-side (Gemini `response_schema`) + client-side
+  schema validation (W4 port). Schema uses plain `"string"` for nullable date fields for
+  Gemini SDK compatibility; `parse_valid_time()` treats empty strings as `None`.
+- [x] Implement `extract_mentions` job body:
+  - Loads `cleaned_text` + `document_chunks` (ordered by `chunk_index`).
+  - Falls back to a virtual single-chunk when no chunk rows exist (idempotent vs. W2 run order).
+  - Applies rule-based NER baseline per chunk (regex vocabulary: QIDs, property IDs, URLs,
+    person names, org patterns, country abbreviations) via `rule_based_mentions()`.
+  - Optionally augments with LLM-based span extraction via
+    `llm.extract_structured(MENTIONS_SCHEMA, prompt)` — one call per chunk.
+  - Merges rule + LLM candidates; LLM wins for the same (char_start, char_end) span.
+  - Translates chunk-local offsets to document-level offsets (provenance).
+  - Clamps confidence to [0.0, 1.0]; drops spans with invalid/inverted offsets.
+  - Idempotent: `DELETE FROM mentions WHERE document_id = $1` before bulk-insert.
+  - Writes to `mentions` with `chunk_id` FK and document-level char offsets.
+- [x] Implement `extract_claims` job body:
+  - Loads `document_chunks` (capped by `max_chunks` — default 20 — for budget control).
+  - Calls `llm.extract_structured(CLAIMS_SCHEMA, prompt)` per chunk; token usage logged.
+  - Validates structured output via W4 port (server + client side); per-chunk LLM failure
+    is non-fatal (logged; continues to next chunk).
+  - Idempotent: `DELETE FROM claims WHERE $1 = ANY(source_document_ids)` before insert
+    (cascade deletes `claim_evidence`).
+  - Writes to `claims` with subject/predicate/object, qualifiers, normalized_text,
+    valid_from/until (parsed via `parse_valid_time()`), confidence, extractor.
+  - Populates `raw_spans` JSONB with `{document_id, chunk_id, char_start, char_end, text}`
+    for full provenance traceability.
+  - Populates `claim_evidence` with `char_offset_start/end` and `quote_excerpt` (only when
+    `redistribution_allowed = true`).
+  - Writes `raw_quote` only when `redistribution_allowed = true` (source policy compliance).
+- [x] Added `resolve_entities` and `derive_relationships` stubs with explicit
+  `NotImplementedError("Plan 02 W6/W7/W8 — …")` for deferred workstreams.
+- [x] Updated CLI (`services/extract/src/intercal_extract/cli.py`): `extract-mentions`
+  command wires the LLM adapter; `extract-claims` adds `--max-chunks` option (budget guard).
+- [x] Added `scripts/dev/verify_w3_extract.py` integration smoke test.
+- [x] 49 unit tests in `services/extract/tests/test_w3_extract.py` covering: schema field
+  presence, rule-based NER (QID, property ID, URL, person name, GPE), helpers
+  (clamp_confidence, safe_int_offset, parse_valid_time), extract_mentions (no-doc, no-text,
+  rule-only, LLM augment, LLM-wins-same-span, LLM-failure-fallback, invalid-offset-dropped,
+  virtual-chunk-fallback, doc-offset-applied, idempotent-delete), extract_claims (no-doc,
+  no-text, single-claim, idempotent-delete, LLM-failure-nonfatal, missing-fields-skipped,
+  no-raw-quote-when-restricted, virtual-chunk-fallback, max-chunks, token-accumulation,
+  raw-spans-provenance), CLI wiring (help, missing args, max-chunks option).
+- [x] All 237 service tests pass; `pnpm py:lint` + `pnpm py:typecheck` clean (0 errors).
+- [x] Live verified (2026-06-05) against Neon branch `br-still-water-ajmss6b6`:
+  - 2 English Wikidata documents processed.
+  - `extract_mentions`: 6 + 5 mentions persisted with document-level char offsets; mix of
+    `rule_regex_v1` and `llm_extract_v1` extractors.
+  - `extract_claims`: 1 claim + 1 evidence row persisted; `raw_spans` carries `chunk_id` +
+    char offsets; `quote_excerpt` present (redistribution=true for Wikidata/CC0 docs).
+  - Provider: `gemini-2.5-flash` (Gemini API key fallback; 326 in / 69 out tokens for 1 claim).
+  - Idempotent re-run: delete+replace confirmed by counter parity (DB count == persisted counter).
 
 Exit criteria:
 
-- [ ] Fixture documents produce expected mentions and claims with source evidence.
+- [x] Fixture documents produce expected mentions and claims with source evidence.
+- [x] Source spans (chunk_id + char offsets) trace every claim back to its evidence text.
+- [x] Extraction is idempotent (safe to retry with same inputs).
 
 Suggested verification:
 
-- `uv run pytest services/extract/tests`
-- `pnpm contracts:check`
+- `pnpm py:lint && pnpm py:typecheck && pnpm py:test`
+- `DATABASE_URL=<neon-branch> uv run python scripts/dev/verify_w3_extract.py`
 
 ## Workstream 4: Provider Abstraction
 

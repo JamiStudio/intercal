@@ -2,7 +2,7 @@
 
 Date: 2026-05-21
 Aligned: 2026-06-05 to live stack (W1 complete)
-Status: [~] Active — W1–W6 complete (W5 = get_delta digest, W6 = verify_claim verdict, both live on Neon), W7–W8 pending
+Status: [~] Active — W1–W7 complete (W5 = get_delta digest, W6 = verify_claim verdict, W7 = freshness/coverage report, all live on Neon), W8 pending
 Source reports: `docs/research/2026-05-21-intercal-foundation-report.md`, `docs/research/2026-06-04-intercal-revisit-audit-and-dev-environment.md`, `docs/architecture/mcp-api.md`, `docs/architecture/provider-boundaries.md`; decisions `docs/decisions/0001-foundation-stack.md`, `docs/decisions/0002-final-hosting-topology.md`
 Owner: Main orchestration agent
 Surface: query services, REST API, MCP server, SDK, token-budgeted digests, evidence search, claim verification, freshness
@@ -547,10 +547,15 @@ Suggested verification:
 
 Goal: Tell agents what Intercal knows, how fresh it is, and where coverage is weak.
 
+Status: [x] Complete (2026-06-05) — `getFreshness` body upgraded from a bare last-updated stamp to a
+real freshness **and** coverage report in `packages/core` (`freshness.ts` + queries.ts fetch),
+verified live against production Neon. REST `/api/v1/freshness` + MCP `get_freshness` surface it
+through the one shared query layer (no new wiring needed — both already dispatch into `getFreshness`).
+
 Depends on:
 
-- [ ] Workstream 1 query services.
-- [ ] Plan 02 source health and fact versions.
+- [x] Workstream 1 query services (`getFreshness` seam + `findEntityRow` resolution).
+- [x] Plan 02 source health and fact versions (claims, `fact_versions`, `source_documents`).
 
 Enables:
 
@@ -559,29 +564,58 @@ Enables:
 
 Repo guidance:
 
-- Known gaps should be explicit in responses.
+- Known gaps should be explicit in responses. (Honoured: a claim-less entity and an unknown topic
+  both report `coverage: 0` with an explicit gap label — never invented coverage.)
 
-Primary areas:
+Primary areas (as built):
 
-- `packages/api`
-- `packages/mcp-server`
-- `services/synthesize`
+- `packages/core` (`freshness.ts` — pure coverage/staleness assembler; `queries.ts` — DB signal
+  fetch + thin dispatch). The plan's original listing of `packages/api` / `packages/mcp-server` /
+  `services/synthesize` predates the W1 one-query-layer decision: freshness is a single shared core
+  query both surfaces call, and the deterministic coverage metric needs no LLM/synthesis service.
+- `packages/shared` (generated `FreshnessReport` — **consumed, not modified**; the contract's
+  existing `coverage` ∈ [0,1] field was the missing dimension W7 fills, so no TypeSpec change).
 
 Implementation tasks:
 
-- [ ] Add entity/topic last-updated calculations.
-- [ ] Add source coverage by area.
-- [ ] Add stale entity detection.
-- [ ] Add confidence/freshness warnings.
-- [ ] Add response fields for known gaps.
+- [x] Entity/topic last-updated calculation — transaction-time recency = newer of the entity row's
+      `last_updated_at` and the newest `fact_versions.recorded_at` for that subject (the
+      authoritative append-only change axis, consistent with delta.ts). Unknown topic falls back to
+      corpus ingest recency (`lastIngestedAt`).
+- [x] Source coverage — `coverage` ∈ [0,1] = distinct source documents backing the entity's active
+      claims / total corpus source documents, clamped to 1. Grounded in the real corpus (the
+      denominator is what Intercal actually has), so it is self-calibrating and **cannot over-state**
+      (distinct ≤ corpus by construction). 0 active claims ⇒ coverage 0 (no recorded knowledge).
+- [x] Stale entity detection — recordings older than a 30-day transaction-time threshold are flagged
+      `stale` in the `staleness` label.
+- [x] Confidence/freshness warnings — single-source (thin) coverage (≤ 0.34) is flagged
+      `thin coverage (N source[s])`; the label distinguishes strong / stale / thin per the exit
+      criterion.
+- [x] Response fields for known gaps — surfaced through the contract's existing fields: `coverage: 0`
+      plus an explicit `staleness` gap string (`no recorded knowledge` for a claim-less entity,
+      `no entity known` for an unknown topic). No contract field added; the honesty rule (AGENTS.md)
+      is met — an absent signal is reported as an explicit gap, never as fabricated coverage.
+- [x] Deterministic unit tests (`freshness.test.ts`, 12) over the pure assembler: unknown-topic
+      no-data, claim-less-entity gap, coverage math + clamp + divide-by-zero guard, strong/stale/thin
+      labels, and the transaction-time recency pick. The SQL fetch path is covered by the live Neon
+      verification (same fetch/pure split as delta.test.ts / verify.test.ts).
 
 Exit criteria:
 
-- [ ] Freshness responses distinguish strong, stale, and thin coverage.
+- [x] Freshness responses distinguish strong, stale, and thin coverage — verified live on production
+      Neon via the real `getFreshness` DB path (project `fancy-boat-93020425`):
+      - covered entity `rust`/`Rustdoc` → `coverage 0.33`, `"today; thin coverage (1 source)"`
+        (honest: the early corpus has only 3 docs, max 1 distinct source per entity);
+      - claim-less entity `kubernetes` → `coverage 0`,
+        `"today; no recorded knowledge (entity present but no claims yet)"`;
+      - unknown topic → `coverage 0`, `"no entity known; corpus last ingested today"`, with the
+        corpus `lastIngestedAt` for overall recency. No fabricated coverage in any case.
 
 Suggested verification:
 
-- `pnpm test -- freshness`
+- `pnpm --filter @intercal/core test` (pure `assembleFreshness` suite)
+- Live `getFreshness` against production Neon (and REST `/api/v1/freshness` + MCP `get_freshness`
+  post-deploy; the deployed surface predates W7 until the next deploy).
 
 ## Workstream 8: Agent Fixture
 
@@ -644,7 +678,8 @@ Suggested verification:
 - [ ] SDK examples run.
 - [x] Digests are budgeted and cited (W5 `getDelta`; live on Neon).
 - [ ] Claim verification handles support, contradiction, and uncertainty.
-- [ ] Freshness/coverage is visible in responses.
+- [x] Freshness/coverage is visible in responses (W7 `getFreshness`; live on Neon — coverage ∈ [0,1]
+      + strong/stale/thin labels, explicit gaps for unknown/claim-less targets).
 - [ ] Agent fixture passes through REST and MCP.
 
 ## Implementation Order

@@ -12,6 +12,7 @@ import type { Db } from './db/client.js';
 import type { EntitiesTable } from './db/types.js';
 import { buildDelta, type DeltaParams } from './delta.js';
 import { NotFoundError } from './errors.js';
+import { assembleFreshness, type FreshnessParams } from './freshness.js';
 import { mapClaim, mapEntity, mapRelationship, mapSourceDocument } from './mappers.js';
 import { buildVerification, type VerifyClaimParams } from './verify.js';
 
@@ -201,30 +202,67 @@ export async function getSources(db: Db, params: SourcesParams): Promise<S['Sour
   return { sources: docs.map(mapSourceDocument) };
 }
 
-export interface FreshnessParams {
-  topic_or_entity: string;
-}
+export type { FreshnessParams };
 
+/**
+ * "What does Intercal know about X, how fresh is it, and where is coverage weak?" (Plan 03 W7).
+ *
+ * This is the fetch layer: it resolves the target and gathers the REAL substrate signals (entity
+ * transaction-time recency, newest fact version, active-claim count, distinct backing sources, and
+ * the corpus size that is the coverage denominator), then delegates to the pure `assembleFreshness`
+ * for the coverage + staleness/gap logic. Same split as delta.ts (`buildDelta` + `assembleDigest`)
+ * so the policy is unit-testable without a DB. Honesty-first: an unresolved topic or a claim-less
+ * entity is reported as an explicit gap (coverage 0), never as invented coverage. See freshness.ts.
+ */
 export async function getFreshness(db: Db, params: FreshnessParams): Promise<S['FreshnessReport']> {
   const entity = await findEntityRow(db, params.topic_or_entity);
-  if (entity) {
-    return {
-      target: entity.canonical_name,
-      lastUpdated: entity.last_updated_at.toISOString(),
-      staleness: staleness(entity.last_updated_at),
-    };
+  if (!entity) {
+    // Unknown topic: explicit no-data. Report only the corpus's overall ingest recency.
+    const latest = await db
+      .selectFrom('source_documents')
+      .select((eb) => eb.fn.max('ingested_at').as('last'))
+      .executeTakeFirst();
+    const lastIngestedAt = (latest?.last as Date | null) ?? null;
+    return assembleFreshness({ kind: 'unknown', topic: params.topic_or_entity, lastIngestedAt });
   }
-  // Fall back to global ingestion freshness when the target is not a known entity.
-  const latest = await db
-    .selectFrom('source_documents')
-    .select((eb) => eb.fn.max('ingested_at').as('last'))
-    .executeTakeFirst();
-  const last = (latest?.last as Date | null) ?? null;
-  return {
-    target: params.topic_or_entity,
-    lastIngestedAt: last ? last.toISOString() : undefined,
-    staleness: staleness(last),
-  };
+
+  // Active claims about the entity (subject OR object) — the corroboration base.
+  const claimRows = await db
+    .selectFrom('claims')
+    .select(['source_document_ids'])
+    .where('status', '=', 'active')
+    .where((eb) =>
+      eb.or([eb('subject_entity_id', '=', entity.id), eb('object_entity_id', '=', entity.id)]),
+    )
+    .execute();
+  const activeClaimCount = claimRows.length;
+  const distinctSources = new Set<string>();
+  for (const c of claimRows) for (const id of c.source_document_ids) distinctSources.add(id);
+
+  // Newest fact-version transaction time for this subject (authoritative change axis), the corpus
+  // size (coverage denominator), in one round-trip each alongside the claims fetch above.
+  const [latestFv, corpus] = await Promise.all([
+    db
+      .selectFrom('fact_versions')
+      .select((eb) => eb.fn.max('recorded_at').as('latest'))
+      .where('fact_subject_type', '=', 'entity')
+      .where('fact_subject_id', '=', entity.id)
+      .executeTakeFirst(),
+    db
+      .selectFrom('source_documents')
+      .select((eb) => eb.fn.countAll().as('n'))
+      .executeTakeFirst(),
+  ]);
+
+  return assembleFreshness({
+    kind: 'entity',
+    canonicalName: entity.canonical_name,
+    lastUpdatedAt: entity.last_updated_at,
+    latestFactVersionAt: (latestFv?.latest as Date | null) ?? null,
+    activeClaimCount,
+    distinctSourceCount: distinctSources.size,
+    corpusSourceCount: Number(corpus?.n ?? 0),
+  });
 }
 
 export interface EvidenceParams {

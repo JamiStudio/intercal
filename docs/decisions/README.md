@@ -19,3 +19,6 @@ implementation.
   stack and adapter baseline (Node/TS, pnpm, Biome, uv/Ruff/Pyright, Postgres+pgvector,
   Neon, R2, Upstash, TypeSpec contracts, MCP, scheduler/workers, embeddings, LLM, Next.js,
   hosting posture, docs convention).
+- [`0002-final-hosting-topology.md`](0002-final-hosting-topology.md) — the decided go-live
+  shape: Neon (dev branches, no local Docker) · Vercel app · Cloudflare R2 · Upstash ·
+  GitHub Actions → Cloud Run for the Python pipeline.

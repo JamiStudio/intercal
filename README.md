@@ -53,18 +53,22 @@ docs/                                — architecture, decisions, engineering st
 
 ## Quick start
 
-Prerequisites: **Node 24** (`.nvmrc`), **pnpm 10+**, **uv**, and **Docker** (for local
-Postgres/Redis/MinIO).
+Prerequisites: **Node 24** (`.nvmrc`), **pnpm 10+**, **uv**. No Docker required — development
+runs directly against a **Neon** branch (see
+[`docs/decisions/0002-final-hosting-topology.md`](docs/decisions/0002-final-hosting-topology.md)).
 
 ```bash
 pnpm install                 # TypeScript workspace
-uv sync                      # Python workspace
-cp .env.example .env         # local config (no secrets committed)
-docker compose up -d         # Postgres+pgvector, Valkey, MinIO
+uv sync --all-packages       # Python workspace
+cp .env.example .env         # set DATABASE_URL to your Neon branch (no secrets committed)
 pnpm contracts:build         # TypeSpec -> OpenAPI/JSON-Schema -> TS + Pydantic
-pnpm db:migrate:seeded       # apply schema + seed vocabularies
+node scripts/dev/migrate.mjs --seed   # apply schema + seed vocabularies to the branch
+pnpm dev                     # dashboard + mounted REST API on one origin
 pnpm verify                  # full gate: lint, typecheck, tests, contracts, db
 ```
+
+Prefer a fully-offline/self-host setup instead of Neon? `docker compose up -d` brings up local
+Postgres+pgvector, Valkey, and MinIO — optional, not the maintainers' flow.
 
 ## Command index
 

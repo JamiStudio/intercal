@@ -1,0 +1,12 @@
+node_modules
+**/node_modules
+**/dist
+**/.next
+.venv
+**/__pycache__
+.git
+pgdata
+miniodata
+.env
+.env.*
+!.env.example

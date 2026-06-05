@@ -11,8 +11,11 @@
     "test": "vitest run --passWithNoTests"
   },
   "dependencies": {
+    "@intercal/api": "workspace:*",
+    "@intercal/core": "workspace:*",
     "@intercal/sdk": "workspace:*",
     "@intercal/shared": "workspace:*",
+    "hono": "catalog:",
     "next": "catalog:",
     "react": "catalog:",
     "react-dom": "catalog:"

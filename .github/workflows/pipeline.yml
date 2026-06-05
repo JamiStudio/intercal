@@ -1,0 +1,38 @@
+name: Pipeline workers
+
+# Portable worker entrypoints (decision D11). Free on the public repo's Actions minutes.
+# Manual for now; the scheduled cron is enabled once Plan 02 implements the job bodies
+# (they currently raise NotImplementedError by design, so an enabled cron would fail).
+on:
+  workflow_dispatch:
+    inputs:
+      service:
+        description: "Service package (intercal_ingest|intercal_extract|intercal_resolve|intercal_synthesize)"
+        required: true
+        default: "intercal_ingest"
+      job:
+        description: "Job name (e.g. ingest_source)"
+        required: true
+  # schedule:
+  #   - cron: "0 * * * *"   # hourly — enable after Plan 02
+
+jobs:
+  run:
+    runs-on: ubuntu-latest
+    env:
+      DATABASE_URL: ${{ secrets.DATABASE_URL }}
+      STORAGE_PROVIDER: s3
+      S3_ENDPOINT: ${{ secrets.S3_ENDPOINT }}
+      S3_BUCKET: ${{ secrets.S3_BUCKET }}
+      S3_ACCESS_KEY_ID: ${{ secrets.S3_ACCESS_KEY_ID }}
+      S3_SECRET_ACCESS_KEY: ${{ secrets.S3_SECRET_ACCESS_KEY }}
+      QUEUE_PROVIDER: redis
+      REDIS_URL: ${{ secrets.REDIS_URL }}
+      EMBEDDINGS_PROVIDER: local
+      LLM_PROVIDER: ${{ vars.LLM_PROVIDER || 'gemini' }}
+      GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v5
+      - run: uv sync --all-packages
+      - run: uv run python -m ${{ inputs.service }} ${{ inputs.job }}

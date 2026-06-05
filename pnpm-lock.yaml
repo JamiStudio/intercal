@@ -154,12 +154,21 @@ importers:
 
   packages/dashboard:
     dependencies:
+      '@intercal/api':
+        specifier: workspace:*
+        version: link:../api
+      '@intercal/core':
+        specifier: workspace:*
+        version: link:../core
       '@intercal/sdk':
         specifier: workspace:*
         version: link:../sdk
       '@intercal/shared':
         specifier: workspace:*
         version: link:../shared
+      hono:
+        specifier: 'catalog:'
+        version: 4.12.23
       next:
         specifier: 'catalog:'
         version: 16.2.7(react-dom@19.2.7(react@19.2.7))(react@19.2.7)

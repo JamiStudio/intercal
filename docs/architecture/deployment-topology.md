@@ -1,41 +1,53 @@
 # Deployment Topology
 
-Intercal depends on **service contracts, not hosts.** The same code runs across three paths by
-swapping adapter configuration (`.env`) — never by changing application code. Zero-cost for
-development and pilot; portable to managed production at scale.
+Intercal depends on **service contracts, not hosts.** Code is the same across every
+environment; only adapter configuration (`.env` / platform env) changes. This is the decided
+**final shape** — free now, scales when required — see
+[`../decisions/0002-final-hosting-topology.md`](../decisions/0002-final-hosting-topology.md).
 
-## The three paths
+## The final shape
 
-| Concern | Local (dev) | Pilot (zero-cost) | Managed (at scale) |
-| --- | --- | --- | --- |
-| Postgres + pgvector | `docker compose` (pgvector image) | **Neon free** (auto-resume) / Supabase | managed Postgres |
-| Object storage (S3 API) | MinIO | **Cloudflare R2 free** (zero egress) | R2 / S3 |
-| Queue / cache | Valkey | **Upstash free** / `pgmq` | managed Redis |
-| REST API + MCP | `tsx`/node | **Vercel or Cloudflare Pages free** (Hono is portable) | Pro/Enterprise host or VPS |
-| Heavy Python workers | local CLI | **GitHub Actions** scheduled (free for public OSS) / Modal | dedicated workers / Cloud Run |
-| Embeddings | local fastembed | local fastembed (in the worker) | hosted optional |
-| LLM | free tier | free tier (Gemini/Groq) | paid provider as needed |
-| Dashboard | `next dev` | Vercel / Cloudflare Pages free | same |
+| Layer | Provider | Notes |
+| --- | --- | --- |
+| Postgres + pgvector | **Neon** | dev = a Neon **branch**, prod = the main branch. Direct cloud — **no Docker in the dev flow.** |
+| Dashboard + REST API + MCP | **Vercel** (one project, one domain) | Next.js UI at `/`; Hono API mounted at `/api/v1/*` + `/api/openapi.json`; MCP at `/api/mcp` (or the Cloud Run service). GitHub-wired with preview deploys. |
+| Object storage (S3 API) | **Cloudflare R2** | zero egress; `STORAGE_PROVIDER=s3`. |
+| Queue / cache | **Upstash** Redis | serverless; `QUEUE_PROVIDER=redis`. |
+| Heavy Python pipeline | **GitHub Actions** (scheduled batch) → **GCloud Cloud Run** (on-demand / scale) | free on the public repo; Cloud Run for scale. Cloud-built Docker (`Dockerfile.workers`). |
+| Embeddings | local **fastembed** in the worker (default) | hosted optional behind the port. |
+| LLM | free tier (Gemini/Groq) default | paid providers behind the same port. |
+| CI/CD | GitHub → Vercel auto-deploy + Actions verify gate | `pnpm verify` in CI against a Postgres service container. |
 
-A single low-cost VPS running all of the above (Postgres, Valkey, MinIO, API/MCP, cron workers)
-is the documented "one-box" alternative and the first paid step.
+A single low-cost VPS (or `docker compose`) running everything is the documented self-host
+alternative for **other people** — it is not the maintainers' dev flow.
 
-## Notes on the zero-cost pilot
+## Developer flow (no Docker)
 
-- **Deploy target is interchangeable.** The API is Hono (Node/Vercel/Cloudflare/Bun); the MCP
-  server uses standard Streamable HTTP. `intercal.vercel.app` or a Cloudflare Pages URL are
-  equally valid front doors. Going live needs only a domain + env config.
-- **Vercel Hobby is non-commercial-only** (verified June 2026). Intercal is open source and
-  non-commercial during the pilot; any monetization/donation surface is a feature flag, hidden
-  until a domain and commercial-friendly host are in place. This is a flag flip, never a
-  re-architecture. See [`../decisions/0001-foundation-stack.md`](../decisions/0001-foundation-stack.md) (D15).
-- **Free-tier limits drift** (Neon CU-hours, Supabase 7-day pause, Upstash command caps). Because
-  the canonical store is plain Postgres+pgvector behind a DB adapter, any forced migration is a
-  `pg_dump`/`pg_restore`, not a refactor. Re-verify free-tier numbers at account-setup time.
+1. `pnpm install && uv sync --all-packages`
+2. Point `DATABASE_URL` at a **Neon branch** (create one per feature; throwaway and free).
+3. `pnpm contracts:build` → `node scripts/dev/migrate.mjs --seed` (applies migrations to the
+   branch — direct live DB work).
+4. `pnpm dev` (dashboard + mounted API) and/or `pnpm --filter @intercal/mcp-server start`.
+
+`docker compose up -d` remains available for fully-offline/self-host work but is optional.
+
+## Go-live
+
+- The app is deploy-target agnostic (Hono runs on Node/Vercel/Cloudflare/Bun; MCP uses
+  standard Streamable HTTP). Going live = connect the GitHub repo to Vercel, set env vars
+  (Neon `DATABASE_URL`, R2, Upstash, LLM keys), and attach a domain. Until a domain is
+  attached we run on the `*.vercel.app` preview/prod URL.
+- **Monetization/donations are a feature flag**, surfaced only after the domain + posture are
+  settled. This is a copy/link toggle, never a re-architecture, and never blocks development.
 
 ## Migrations & backups
 
-- Schema is SQL-first (`db/migrations`); apply with `pnpm db:migrate:seeded`. Forward-fix policy
-  (no down-migrations) — see [`../../db/README.md`](../../db/README.md).
-- Backups, restore proof, and the managed-deployment runbook are owned by the operations plan
-  (Plan 04).
+- SQL-first (`db/migrations`); apply with `node scripts/dev/migrate.mjs --seed` against any
+  `DATABASE_URL`. Forward-fix policy — see [`../../db/README.md`](../../db/README.md).
+- Neon provides branching + point-in-time restore; managed-backup runbook is owned by Plan 04.
+
+## Free-tier drift
+
+Neon CU-hours, Upstash command caps, and R2 limits change. Because the canonical store is plain
+Postgres+pgvector behind a DB adapter, any forced move is a `pg_dump`/`pg_restore`, not a
+refactor. Re-verify free-tier numbers at setup.

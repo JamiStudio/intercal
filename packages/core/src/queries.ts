@@ -88,7 +88,8 @@ export async function getEntity(db: Db, params: EntityParams): Promise<S['Entity
     .selectAll()
     .where('subject_entity_id', '=', row.id)
     .where('status', '=', 'active')
-    .orderBy('recorded_at', 'desc')
+    // claims has no recorded_at column; created_at is the claim's transaction time.
+    .orderBy('created_at', 'desc')
     .limit(25)
     .execute();
 

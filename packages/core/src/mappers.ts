@@ -65,7 +65,8 @@ export function mapClaim(row: ClaimsTable): Claim {
     normalizedText: row.normalized_text,
     validFrom: iso(row.valid_from),
     validUntil: iso(row.valid_until),
-    recordedAt: row.recorded_at.toISOString(),
+    // claims has no recorded_at column; created_at is the claim's transaction time.
+    recordedAt: row.created_at.toISOString(),
     confidence: { score: Number(row.extraction_confidence), method: 'extraction' },
     status: CLAIM_STATUS[row.status] ?? 'proposed',
     contradiction: CONTRADICTION[row.contradiction_status] ?? 'none',

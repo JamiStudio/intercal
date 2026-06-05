@@ -71,7 +71,11 @@ export interface ClaimsTable {
   source_document_ids: string[];
   contradiction_status: string;
   status: string;
-  recorded_at: Date;
+  // claims has no dedicated transaction-time column (unlike relationships/fact_versions).
+  // created_at is the row's transaction time — when Intercal recorded the claim — and is the
+  // source for the contract's required Claim.recordedAt. updated_at tracks last mutation.
+  created_at: Date;
+  updated_at: Date;
 }
 
 export interface SourceDocumentsTable {

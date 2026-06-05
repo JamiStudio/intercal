@@ -78,6 +78,12 @@ COMMENT ON TABLE claims IS
     'qualifiers, confidence, contradiction state, and lifecycle status. '
     'Every claim used publicly must be linked to claim_evidence → source_documents.';
 
+COMMENT ON COLUMN claims.created_at IS
+    'Transaction time: when Intercal recorded this claim. Set at insert. '
+    'This is the bitemporal learn-time axis for claims (the analog of relationships.recorded_at / '
+    'fact_versions.recorded_at) and is the source for the contract''s Claim.recordedAt. '
+    'valid_from/valid_until carry world (valid) time, which is independent of this.';
+
 -- ---------------------------------------------------------------------------
 -- claim_evidence
 -- ---------------------------------------------------------------------------

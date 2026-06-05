@@ -26,9 +26,60 @@ function staleness(from: Date | null): string | undefined {
   return `${days} days`;
 }
 
+/**
+ * Resolve a UUID that may point to a deprecated (merged-away) entity.
+ *
+ * Decision (W1): when an agent holds a UUID for an entity that has been merged,
+ * silently serving the deprecated row as canonical is wrong — it would expose a
+ * stale, non-authoritative record with no indication it has been superseded.
+ * The right behaviour for an append-only substrate is to be transparent:
+ *   - Follow `merged_into_id` up to the surviving (non-deprecated) entity and
+ *     return that, so callers automatically get the current canonical record.
+ *   - If the chain is unexpectedly broken (survivor missing or also deprecated),
+ *     throw `NotFoundError` with the `mergedIntoId` detail so the caller can log
+ *     or surface it — never silently return a stale row.
+ *
+ * We cap the follow-chain at 5 hops to guard against corrupt cycles.
+ */
+async function resolveIfMerged(db: Db, row: EntitiesTable): Promise<EntitiesTable> {
+  let current = row;
+  const MAX_HOPS = 5;
+  for (let hop = 0; hop < MAX_HOPS; hop++) {
+    if (!current.is_deprecated || !current.merged_into_id) return current;
+    const survivor = await db
+      .selectFrom('entities')
+      .selectAll()
+      .where('id', '=', current.merged_into_id)
+      .executeTakeFirst();
+    if (!survivor) {
+      throw new NotFoundError(
+        `Entity ${row.id} was merged but the survivor entity ${current.merged_into_id} no longer exists.`,
+        { mergedIntoId: current.merged_into_id },
+      );
+    }
+    current = survivor;
+  }
+  // Survived the loop: either we reached a non-deprecated node (returned above)
+  // or we hit MAX_HOPS, implying a corrupt cycle.
+  if (current.is_deprecated) {
+    throw new NotFoundError(
+      `Entity ${row.id} merge chain did not resolve to a live entity within ${MAX_HOPS} hops.`,
+      { mergedIntoId: current.merged_into_id ?? undefined },
+    );
+  }
+  return current;
+}
+
 async function findEntityRow(db: Db, nameOrId: string): Promise<EntitiesTable | undefined> {
   if (UUID.test(nameOrId)) {
-    return db.selectFrom('entities').selectAll().where('id', '=', nameOrId).executeTakeFirst();
+    const row = await db
+      .selectFrom('entities')
+      .selectAll()
+      .where('id', '=', nameOrId)
+      .executeTakeFirst();
+    if (!row) return undefined;
+    // Transparently resolve merged-away IDs to their survivor.
+    return resolveIfMerged(db, row);
   }
   const byName = await db
     .selectFrom('entities')
@@ -39,6 +90,8 @@ async function findEntityRow(db: Db, nameOrId: string): Promise<EntitiesTable | 
     .executeTakeFirst();
   if (byName) return byName;
 
+  // Alias lookup: guard against aliases that have been re-parented to a deprecated entity
+  // (can occur transiently during a merge reversal or data-quality correction).
   const alias = await db
     .selectFrom('entity_aliases')
     .select('entity_id')

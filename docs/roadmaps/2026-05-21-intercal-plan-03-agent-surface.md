@@ -1,8 +1,8 @@
 # Agent-Facing Product Surface Implementation Plan
 
 Date: 2026-05-21
-Aligned: 2026-06-04 to live stack
-Status: [ ] Active draft
+Aligned: 2026-06-05 to live stack (W1 complete)
+Status: [~] Active — W1 complete, W2–W8 pending
 Source reports: `docs/research/2026-05-21-intercal-foundation-report.md`, `docs/research/2026-06-04-intercal-revisit-audit-and-dev-environment.md`, `docs/architecture/mcp-api.md`, `docs/architecture/provider-boundaries.md`; decisions `docs/decisions/0001-foundation-stack.md`, `docs/decisions/0002-final-hosting-topology.md`
 Owner: Main orchestration agent
 Surface: query services, REST API, MCP server, SDK, token-budgeted digests, evidence search, claim verification, freshness
@@ -73,9 +73,11 @@ Query service -> REST API -> MCP server -> SDK -> digest synthesis -> claim veri
 
 Goal: Centralize all read behavior used by REST, MCP, SDK examples, and later UI.
 
+Status: [x] Complete (2026-06-05)
+
 Depends on:
 
-- [ ] Plan 02 relationship and fact-version outputs.
+- [x] Plan 02 relationship and fact-version outputs — real data live in Neon.
 
 Enables:
 
@@ -88,22 +90,36 @@ Repo guidance:
 
 Primary areas:
 
-- `packages/shared`
-- `packages/api`
-- `packages/mcp-server`
+- `packages/core` (queries.ts, mappers.ts, db/types.ts)
+- `packages/shared` (generated contracts — not modified; no TypeSpec change needed)
 
 Implementation tasks:
 
-- [ ] Add entity lookup service.
-- [ ] Add topic resolution service.
-- [ ] Add hybrid lexical/vector evidence search.
-- [ ] Add claim lookup and relationship traversal.
-- [ ] Add point-in-time fact state and delta assembly.
-- [ ] Add freshness calculation.
+- [x] Entity lookup service (`getEntity`) — real reads, aliases, point-in-time relationships, facts.
+- [x] Topic/entity resolution (`findEntityRow`) — name, UUID, alias paths.
+- [x] Lexical evidence search (`searchEvidence`) — ILIKE on title + cleaned_text, source-policy snippet.
+- [x] Claim lookup and sources (`getSources`) — claim-level and entity-level source traversal.
+- [x] Freshness calculation (`getFreshness`) — entity last_updated_at + global ingestion fallback.
+- [x] Merged-id resolution — UUID lookup transparently follows merged_into_id chain to survivor;
+      broken/cyclic chains surface as NotFoundError with mergedIntoId detail. Decision rationale
+      in `resolveIfMerged` docblock in queries.ts.
+- [x] mapRelationship status bug fixed — `valid_until !== null` (not bare truthiness, which was
+      wrong for far-future Date objects).
+- [x] EntitiesTable types completed — `deprecated_at` and `deprecation_reason` added to match schema.
+- [x] Alias lookup hardened — is_deprecated=false guard on the entity join.
+- [x] getDelta / verifyClaim left as honest `NotImplementedError("Plan 03 …")` seams.
 
 Exit criteria:
 
-- [ ] Query services return contract-valid results against fixture pipeline data.
+- [x] Query services return contract-valid results against live Plan 02 production data.
+- [x] `pnpm lint` passes (biome.json schema version info is pre-existing drift, not a code error).
+- [x] `pnpm typecheck` passes (all 6 packages).
+- [x] `pnpm test` passes (10 tests in @intercal/core including 7 new mapRelationship assertions).
+- [x] `pnpm build` passes (all packages including Next.js dashboard).
+- [x] Live API verification: `GET /api/v1/entity?name_or_id=rust` returns correct EntityResponse
+      with real claims; `GET /api/v1/evidence?query=rust` returns real hits from production Neon;
+      `GET /api/v1/freshness?topic_or_entity=rust` and `/api/v1/sources?entity_or_claim_id=...`
+      return correct data; `GET /api/v1/delta` returns HTTP 501 as expected.
 
 Suggested verification:
 

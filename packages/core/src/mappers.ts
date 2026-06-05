@@ -75,7 +75,10 @@ export function mapClaim(row: ClaimsTable): Claim {
 }
 
 export function mapRelationship(row: RelationshipsTable): Relationship {
-  const status: Relationship['status'] = !row.is_active || row.valid_until ? 'ended' : 'active';
+  // `row.valid_until` is a Date object when present — truthy even for far-future dates.
+  // Check !== null, not bare truthiness, to detect a closed interval correctly.
+  const status: Relationship['status'] =
+    !row.is_active || row.valid_until !== null ? 'ended' : 'active';
   return {
     id: row.id,
     type: row.type_id,

@@ -21,6 +21,9 @@ export interface EntitiesTable {
   last_updated_at: Date;
   is_deprecated: boolean;
   merged_into_id: string | null;
+  // Set when is_deprecated = true (merge/duplicate/error/split).
+  deprecated_at: Date | null;
+  deprecation_reason: string | null;
 }
 
 export interface EntityAliasesTable {

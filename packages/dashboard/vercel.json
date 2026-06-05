@@ -1,0 +1,4 @@
+{
+  "$schema": "https://openapi.vercel.sh/vercel.json",
+  "buildCommand": "cd ../.. && pnpm contracts:build && pnpm -r --filter \"./packages/**\" --filter \"!@intercal/dashboard\" exec tsc -b --force && pnpm --filter @intercal/dashboard build"
+}

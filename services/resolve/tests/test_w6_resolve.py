@@ -33,6 +33,7 @@ from intercal_resolve.jobs import (
     MIN_MENTION_CONFIDENCE,
     derive_relationships,
     detect_external_id,
+    find_external_id_collisions,
     normalize_name,
     ordered_pair,
     resolve_entities,
@@ -197,9 +198,9 @@ async def test_resolve_entities_external_id_existing_entity() -> None:
                     "extraction_confidence": 0.90,
                     "chunk_id": None,
                 })]
-            # External ID lookup
-            if "ENTITY_EXTERNAL_IDS EEI" in sql_upper:
-                return [_FakeRecord(existing_entity_row)]
+            # External-ID collision detector (step 4, fetch) — no collision here.
+            if "HAVING COUNT(DISTINCT EEI.ENTITY_ID) > 1" in sql_upper:
+                return []
             # merge candidates (step 6)
             if "PROPOSED_DECISION = 'MERGE'" in sql_upper:
                 return []
@@ -828,3 +829,181 @@ def test_min_confidence_positive() -> None:
 
 def test_exact_match_confidence_high() -> None:
     assert EXACT_MATCH_CONFIDENCE >= 0.9
+
+
+# ──────────────────────────────────────────────────────────────────────────────
+# External-ID collision detection
+# ──────────────────────────────────────────────────────────────────────────────
+
+
+@pytest.mark.asyncio
+async def testfind_external_id_collisions_detects_shared_id() -> None:
+    """Two live entities carrying the same (namespace, external_id) → one merge pair."""
+    e1 = uuid.UUID("00000000-0000-0000-0000-000000000001")
+    e2 = uuid.UUID("00000000-0000-0000-0000-000000000002")
+
+    class CollisionPool(FakePool):
+        async def fetch(self, sql: str, *args: Any) -> list[Any]:
+            sql_upper = " ".join(sql.split()).upper()
+            if "HAVING COUNT(DISTINCT EEI.ENTITY_ID) > 1" in sql_upper:
+                return [_FakeRecord({
+                    "namespace": "wikidata",
+                    "external_id": "Q5401080",
+                    "entity_ids": [e2, e1],  # unsorted on purpose
+                })]
+            return []
+
+    pairs = await find_external_id_collisions(CollisionPool())
+    assert len(pairs) == 1
+    left, right, ns, xid = pairs[0]
+    # ordered_pair → left < right (UUID ordering)
+    assert left == e1 and right == e2
+    assert ns == "wikidata" and xid == "Q5401080"
+
+
+@pytest.mark.asyncio
+async def testfind_external_id_collisions_none_when_distinct() -> None:
+    """No shared external IDs → no merge pairs (distinct entities stay separate)."""
+    pairs = await find_external_id_collisions(FakePool({"SELECT": []}))
+    assert pairs == []
+
+
+@pytest.mark.asyncio
+async def testfind_external_id_collisions_chains_three_entities() -> None:
+    """Three entities sharing one external ID → two pairs, all chained onto the survivor."""
+    e1 = uuid.UUID("00000000-0000-0000-0000-000000000001")
+    e2 = uuid.UUID("00000000-0000-0000-0000-000000000002")
+    e3 = uuid.UUID("00000000-0000-0000-0000-000000000003")
+
+    class CollisionPool(FakePool):
+        async def fetch(self, sql: str, *args: Any) -> list[Any]:
+            sql_upper = " ".join(sql.split()).upper()
+            if "HAVING COUNT(DISTINCT EEI.ENTITY_ID) > 1" in sql_upper:
+                return [_FakeRecord({
+                    "namespace": "wikidata", "external_id": "Q5",
+                    "entity_ids": [e3, e1, e2],
+                })]
+            return []
+
+    pairs = await find_external_id_collisions(CollisionPool())
+    # (e1,e2) and (e1,e3) — every entity collapses onto the lowest-UUID survivor.
+    assert len(pairs) == 2
+    survivors = {p[0] for p in pairs}
+    assert survivors == {e1}
+    assert {p[1] for p in pairs} == {e2, e3}
+
+
+# ──────────────────────────────────────────────────────────────────────────────
+# resolve_entities — REAL merge path: co-referent mentions (shared external ID)
+# unify into one entity (merge candidate generated AND auto-merged).
+# ──────────────────────────────────────────────────────────────────────────────
+
+
+@pytest.mark.asyncio
+async def test_resolve_entities_external_id_collision_auto_merges() -> None:
+    """Two distinct surface forms sharing a Wikidata QID merge into one entity.
+
+    This exercises the full pipeline merge path end-to-end (not a hand-injected
+    candidate): step 4 detects the external-ID collision, emits a 'merge'
+    candidate at EXACT_MATCH_CONFIDENCE, and step 6 auto-merges it via
+    _perform_merge (source deprecated, mentions re-parented, merge event written).
+    """
+    e_low = uuid.UUID("00000000-0000-0000-0000-0000000000aa")
+    e_high = uuid.UUID("00000000-0000-0000-0000-0000000000bb")
+    candidate_id = uuid.uuid4()
+
+    class MergePool(FakePool):
+        async def fetch(self, sql: str, *args: Any) -> list[Any]:
+            sql_upper = " ".join(sql.split()).upper()
+            # No unresolved mentions this pass — merge-only run.
+            if "FROM MENTIONS M" in sql_upper and "RESOLUTION_STATUS = 'UNRESOLVED'" in sql_upper:
+                return []
+            # External-ID collision detector returns one colliding pair.
+            if "HAVING COUNT(DISTINCT EEI.ENTITY_ID) > 1" in sql_upper:
+                return [_FakeRecord({
+                    "namespace": "wikidata", "external_id": "Q5401080",
+                    "entity_ids": [e_high, e_low],
+                })]
+            # Step 6 reads open merge candidates.
+            if "PROPOSED_DECISION = 'MERGE'" in sql_upper:
+                return [_FakeRecord({
+                    "id": candidate_id,
+                    "left_entity_id": e_low,
+                    "right_entity_id": e_high,
+                    "confidence": EXACT_MATCH_CONFIDENCE,
+                    "matching_signals": json.dumps([{"type": "external_id"}]),
+                })]
+            # Re-parent: source has no aliases / external IDs to move in this fixture.
+            if "FROM ENTITY_ALIASES WHERE ENTITY_ID" in sql_upper:
+                return []
+            if "FROM ENTITY_EXTERNAL_IDS WHERE ENTITY_ID" in sql_upper:
+                return []
+            return []
+
+        async def fetchrow(self, sql: str, *args: Any) -> Any | None:
+            sql_upper = " ".join(sql.split()).upper()
+            # candidate upsert returns its id
+            if "INSERT INTO ENTITY_RESOLUTION_CANDIDATES" in sql_upper:
+                return _FakeRecord({"id": candidate_id})
+            # source entity fetch (loser = right = e_high)
+            if "IS_DEPRECATED" in sql_upper and "FROM ENTITIES" in sql_upper:
+                return _FakeRecord({
+                    "is_deprecated": False, "merged_into_id": None,
+                    "canonical_name": "Q5401080", "type_id": "technical_artifact",
+                    "description": None, "current_state": {}, "metadata": {},
+                })
+            # target entity fetch (winner = left = e_low)
+            if "CANONICAL_NAME" in sql_upper and "FROM ENTITIES" in sql_upper:
+                return _FakeRecord({
+                    "canonical_name": "single-cell analysis", "type_id": "technical_artifact",
+                    "description": None, "current_state": {}, "metadata": {},
+                })
+            return None
+
+    pool = MergePool()
+    counters = await resolve_entities(pool=pool, embeddings=None)
+
+    # A merge candidate was created AND a merge was performed.
+    assert counters["candidates_created"] >= 1
+    assert counters["merges_performed"] >= 1
+
+    sqls = [" ".join(s.split()).upper() for s, _ in pool.executed]
+
+    # Source entity was deprecated (merged_into_id set).
+    assert any("SET IS_DEPRECATED = TRUE" in s for s in sqls)
+    # A merge event was recorded for reversal.
+    assert any("INSERT INTO ENTITY_MERGE_EVENTS" in s for s in sqls)
+    # Mentions pointing at the loser were re-parented onto the survivor.
+    reparent = [
+        args for s, args in pool.executed
+        if "UPDATE MENTIONS SET ENTITY_ID = $1 WHERE ENTITY_ID = $2" in " ".join(s.split()).upper()
+    ]
+    assert reparent and reparent[0][0] == e_low and reparent[0][1] == e_high
+    # Survivor's freshness signal bumped (getEntity reads last_updated_at).
+    assert any("SET LAST_UPDATED_AT = NOW()" in s for s in sqls)
+
+
+@pytest.mark.asyncio
+async def test_resolve_entities_distinct_external_ids_do_not_merge() -> None:
+    """Entities with different external IDs are never merged (no collision)."""
+
+    class NoCollisionPool(FakePool):
+        async def fetch(self, sql: str, *args: Any) -> list[Any]:
+            sql_upper = " ".join(sql.split()).upper()
+            if "FROM MENTIONS M" in sql_upper and "RESOLUTION_STATUS = 'UNRESOLVED'" in sql_upper:
+                return []
+            if "HAVING COUNT(DISTINCT EEI.ENTITY_ID) > 1" in sql_upper:
+                return []  # no shared external IDs
+            if "PROPOSED_DECISION = 'MERGE'" in sql_upper:
+                return []
+            return []
+
+    pool = NoCollisionPool()
+    counters = await resolve_entities(pool=pool, embeddings=None)
+    assert counters["merges_performed"] == 0
+    assert counters["candidates_created"] == 0
+    merge_inserts = [
+        s for s, _ in pool.executed
+        if "INSERT INTO ENTITY_MERGE_EVENTS" in " ".join(s.split()).upper()
+    ]
+    assert merge_inserts == []

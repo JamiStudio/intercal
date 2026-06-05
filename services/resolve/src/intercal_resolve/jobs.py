@@ -391,6 +391,47 @@ async def _upsert_resolution_candidate(
     return uuid.UUID(str(row["id"]))
 
 
+async def find_external_id_collisions(
+    pool: Any,
+) -> list[tuple[uuid.UUID, uuid.UUID, str, str]]:
+    """Find pairs of live entities that share an identical external ID.
+
+    An external ID (e.g. a Wikidata QID) is a strong, unambiguous co-reference
+    signal: two non-deprecated entities carrying the same ``(namespace,
+    external_id)`` are the same real-world thing and MUST collapse to one.
+
+    This catches the realistic case where the same QID is minted under two
+    surface forms (``Q5401080`` as a bare span in one document and a
+    ``Property:``/prefixed form in another, or a name that later acquires the
+    same ID) — distinct ``canonical_name`` rows that exact-name matching can
+    never unify.
+
+    Returns ``(left_id, right_id, namespace, external_id)`` tuples with
+    ``left_id < right_id`` (UUID ordering), one per colliding pair, deterministic.
+    """
+    rows = await pool.fetch(
+        """
+        SELECT eei.namespace, eei.external_id,
+               array_agg(DISTINCT eei.entity_id) AS entity_ids
+        FROM entity_external_ids eei
+        JOIN entities e ON e.id = eei.entity_id
+        WHERE e.is_deprecated = false
+        GROUP BY eei.namespace, eei.external_id
+        HAVING count(DISTINCT eei.entity_id) > 1
+        """,
+    )
+    pairs: list[tuple[uuid.UUID, uuid.UUID, str, str]] = []
+    for r in rows:
+        ids = sorted(uuid.UUID(str(i)) for i in r["entity_ids"])
+        namespace = str(r["namespace"])
+        external_id = str(r["external_id"])
+        # Chain every entity onto the lowest-UUID survivor: (ids[0], ids[k]).
+        for other in ids[1:]:
+            left, right = ordered_pair(ids[0], other)
+            pairs.append((left, right, namespace, external_id))
+    return pairs
+
+
 async def _perform_merge(
     pool: Any,
     *,
@@ -517,6 +558,13 @@ async def _perform_merge(
         """,
         target_id,
         source_id,
+    )
+
+    # Bump the surviving target so the query layer's freshness signal
+    # (getEntity reads entities.last_updated_at) reflects the merge.
+    await pool.execute(
+        "UPDATE entities SET last_updated_at = now(), updated_at = now() WHERE id = $1",
+        target_id,
     )
 
     # Write merge event.
@@ -860,16 +908,36 @@ async def resolve_entities(
         for m in group_mentions:
             mention_entity_map[m["mention_id"]] = resolved_entity_id
 
-    # ── 4. Within-group and cross-group duplicate entity detection ────────────
-    # Find any two groups that resolved to different entities with matching spans
-    # (to catch edge cases where two mentions of the same real-world entity ended
-    # up in different groups due to type mismatch).
-    # This is intentionally conservative: we only create candidates, never merge.
-    entity_to_spans: dict[uuid.UUID, list[tuple[str, str]]] = {}
-    for (norm_span, type_id), group_mentions in groups.items():
-        e_id = mention_entity_map.get(group_mentions[0]["mention_id"])
-        if e_id is not None:
-            entity_to_spans.setdefault(e_id, []).append((norm_span, type_id))
+    # ── 4. External-ID collision → high-confidence merge candidates ───────────
+    # Two live entities sharing an identical (namespace, external_id) are
+    # unambiguously the same real-world thing.  Emit a 'merge' candidate at the
+    # exact-match confidence floor; step 6 then auto-merges it.  This is the
+    # principled, conservative merge trigger — name/embedding similarity alone
+    # never auto-merges (those stay needs_review).
+    for left_id, right_id, namespace, external_id in await find_external_id_collisions(pool):
+        try:
+            await _upsert_resolution_candidate(
+                pool,
+                left_id=left_id,
+                right_id=right_id,
+                proposed_decision="merge",
+                confidence=EXACT_MATCH_CONFIDENCE,
+                matching_signals=[{
+                    "type": "external_id",
+                    "namespace": namespace,
+                    "external_id": external_id,
+                    "weight": 1.0,
+                }],
+                negative_signals=[],
+                decision_source="external_id_match",
+                evidence_document_ids=[],
+            )
+            counters["candidates_created"] += 1
+        except Exception as exc:
+            _log.warning(
+                "resolve_entities: failed to create external-id merge candidate "
+                "for %s/%s: %s", namespace, external_id, exc,
+            )
 
     # ── 5. Write mention links ────────────────────────────────────────────────
     resolved_count = 0
@@ -939,16 +1007,15 @@ async def resolve_entities(
                 rationale=rationale,
             )
             counters["merges_performed"] += 1
-            # Update all mentions that pointed to the deprecated (right) entity.
+            # Re-parent every mention that pointed at the deprecated (source) entity
+            # onto the surviving (target) entity so mention→entity provenance never
+            # dangles to a deprecated row.  (mentions has no updated_at column —
+            # resolved_at already records the link time.)
             await pool.execute(
-                """
-                UPDATE mentions
-                SET entity_id = $1, updated_at = now()
-                WHERE entity_id = $2
-                """,
+                "UPDATE mentions SET entity_id = $1 WHERE entity_id = $2",
                 left_id,
                 right_id,
-            ) if hasattr(pool, "execute") else None
+            )
         except Exception as exc:
             _log.warning(
                 "resolve_entities: merge failed for candidate %s: %s", candidate_id, exc

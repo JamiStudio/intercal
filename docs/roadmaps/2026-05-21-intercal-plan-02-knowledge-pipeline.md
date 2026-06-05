@@ -685,33 +685,53 @@ Implementation tasks:
   aliased to the occupant entity.
 - [x] Entity embeddings created on new entity insert (`entity_embeddings` table) so
   within-run cross-span comparison and future-run re-resolution work correctly.
+- [x] External-ID collision merge (the principled auto-merge trigger): two non-deprecated
+  entities sharing an identical `(namespace, external_id)` are unambiguous co-reference.
+  `find_external_id_collisions` emits a `proposed_decision='merge'` candidate at
+  `EXACT_MATCH_CONFIDENCE` (decision_source `external_id_match`) which step 6 auto-merges.
+  Name/embedding similarity alone NEVER auto-merges — those stay `needs_review` (conservative).
 - [x] Auto-merge: high-confidence `merge` candidates (confidence ≥ `EXACT_MATCH_CONFIDENCE`
-  = 0.95) are auto-merged via `_perform_merge`: source deprecated, aliases + external IDs
-  re-parented to target, `entity_merge_events` row written for full reversal support.
+  = 0.95) are auto-merged via `_perform_merge`: source deprecated (`merged_into_id` → target),
+  aliases + external IDs re-parented to target, every mention re-parented onto the survivor,
+  target `last_updated_at` bumped (query-layer freshness), `entity_merge_events` row written
+  for full reversal support.
 - [x] Idempotent: candidates upserted by (left_entity_id, right_entity_id); human/decided
-  rows not overwritten. Mention UPDATE uses `WHERE resolution_status = 'unresolved'`.
+  rows not overwritten. Mention UPDATE uses `WHERE resolution_status = 'unresolved'`; merge
+  re-parent uses `UPDATE mentions SET entity_id` (no nonexistent `updated_at` column).
+  Re-running after a merge finds no remaining collision (external IDs already re-parented).
 - [x] `derive_relationships` and `write_fact_versions` remain `NotImplementedError("Plan 02 W7 — …")`.
 - [x] `resolve-entities` CLI command updated with `--embeddings/--no-embeddings` flag.
-- [x] 33 W6 unit tests in `services/resolve/tests/test_w6_resolve.py` covering helpers
-  (`normalize_name`, `ordered_pair`, `detect_external_id`), all resolution paths
-  (no mentions, external-ID match, external-ID new, exact name match, new entity, dedup
-  same span, embedding direct match, embedding review candidate, auto-merge,
-  review-not-merged, idempotent re-run, embedding failure non-fatal, counter shape,
-  threshold ordering, CLI flags). All 309 service tests pass.
+- [x] 38 W6 unit tests in `services/resolve/tests/test_w6_resolve.py` covering helpers
+  (`normalize_name`, `ordered_pair`, `detect_external_id`, `find_external_id_collisions`),
+  all resolution paths (no mentions, external-ID match, external-ID new, exact name match,
+  new entity, dedup same span, embedding direct match, embedding review candidate, auto-merge,
+  review-not-merged, idempotent re-run, embedding failure non-fatal, counter shape, threshold
+  ordering, CLI flags) AND the full end-to-end merge path (external-ID collision → merge
+  candidate → auto-merge → source deprecated + mention re-parented + merge event + freshness
+  bump) plus the distinct-IDs-do-not-merge non-merge control. All 314 service tests pass.
 - [x] `scripts/dev/verify_w6_resolve.py` integration smoke test.
-- [x] Live verified (2026-06-05) against Neon branch `br-still-water-ajmss6b6`:
+- [x] Live verified (2026-06-05) against Neon dev branch `br-still-water-ajmss6b6` and an
+  adversarial throwaway fork (`w6-merge-audit-throwaway`, deleted after):
   - 11 unresolved mentions → 11 entities created, 11 mentions resolved, 11 entity_id FKs set.
   - External IDs registered: Q40156532, Q5, Q5401080 (wikidata); P31 (wikidata_property).
   - 3 `needs_review` candidates generated (Wikidata QID ARTIFACT entities, cosine dist 0.36–0.38).
-  - 0 auto-merges (all candidates below EXACT_MATCH_CONFIDENCE floor — correct conservative behaviour).
-  - Idempotent re-run: entity count unchanged (11).
-  - Provenance: all 11 resolved mentions carry entity_id FK.
-  - Acceptance gate: ≥1 resolved entity + ≥1 review-needed entity — SATISFIED.
+  - **Merge proof** (adversarial fork): a second entity (`single-cell analysis`, distinct
+    surface form) seeded with the SAME `wikidata:Q5401080` as the existing `Q5401080` entity
+    → one merge candidate, one auto-merge: loser deprecated (`merged_into_id` → survivor,
+    reason `merged`), exactly 1 live QID holder remains, fixture mention re-parented onto the
+    survivor, 1 `entity_merge_events` row, survivor `last_updated_at` bumped.
+  - **Non-merge proof**: the 3 `needs_review` candidates stayed open; the 10 distinct entities
+    were untouched; distinct external IDs never collide.
+  - **Idempotent re-run**: second pass `merges_performed=0`, `candidates_created=0`, live entity
+    count unchanged (no thrashing, no duplicate merge).
+  - Provenance: every resolved mention carries an entity_id FK to a live (non-deprecated) entity.
 
 Exit criteria:
 
-- [x] Tests prove exact merge, ambiguous review, and role/office separation.
-- [x] Live resolution produces ≥1 resolved entity and ≥1 review-needed candidate from real mentions.
+- [x] Tests prove exact merge (real co-referent mentions unify via external-ID identity),
+  ambiguous review, non-merge of distinct entities, and role/office separation.
+- [x] Live resolution produces ≥1 resolved entity and ≥1 review-needed candidate from real
+  mentions, and a real merge from adversarial co-referent mentions.
 
 Suggested verification:
 

@@ -2,7 +2,7 @@
 
 Date: 2026-05-21
 Aligned: 2026-06-05 to live stack (W1 complete)
-Status: [~] Active — W1 complete, W2–W8 pending
+Status: [~] Active — W1–W2 complete (REST surface hardened), W3–W8 pending
 Source reports: `docs/research/2026-05-21-intercal-foundation-report.md`, `docs/research/2026-06-04-intercal-revisit-audit-and-dev-environment.md`, `docs/architecture/mcp-api.md`, `docs/architecture/provider-boundaries.md`; decisions `docs/decisions/0001-foundation-stack.md`, `docs/decisions/0002-final-hosting-topology.md`
 Owner: Main orchestration agent
 Surface: query services, REST API, MCP server, SDK, token-budgeted digests, evidence search, claim verification, freshness
@@ -167,23 +167,36 @@ Primary areas:
 
 Implementation tasks:
 
-- [ ] Implement `GET /delta` body (deferred stub; this plan's core deliverable alongside `verify_claim`).
-- [ ] Add `GET /entities/:id` (already partially wired via live `get_entity`; confirm contract-valid).
-- [ ] Add `GET /search/evidence` (already partially wired; confirm contract-valid).
-- [ ] Implement `POST /claims/verify` body (deferred stub; this plan's core deliverable).
-- [ ] Add `GET /sources` (already partially wired; confirm contract-valid).
-- [ ] Add `GET /freshness` (already partially wired; confirm contract-valid).
-- [ ] Add health/status endpoints.
-- [ ] Add pagination, error envelopes, and rate-limit hooks.
+- [x] All 6 V1 routes wired against the shared query layer and confirmed contract-valid:
+      `GET /v1/{delta,entity,evidence,claims/verify,sources,freshness}` (live `/api/v1/*`).
+      Route paths follow the TypeSpec contract, not REST-isms like `/entities/:id`.
+- [x] `GET /v1/delta` and `GET /v1/claims/verify` return `501 not_implemented` via the core
+      `NotImplementedError` seams — bodies are the W5/W6 deliverables, honestly deferred.
+- [x] Input validation against the generated contract (Ajv over the TypeSpec JSON Schemas):
+      dates enforced as `date-time`, integers/limit bounds (`limit ∈ [1,100]`), required params.
+- [x] Unknown query parameters rejected with `400 invalid_request` (`additionalProperties:false`
+      injected onto a clone of each query schema — the generated artifact is never mutated).
+- [x] `entity_or_claim_id` UUID guard at the REST boundary: a non-UUID returns `400` instead of
+      leaking the DB-level `500 invalid input syntax for type uuid` (verified against prod).
+- [x] Consistent error taxonomy with JSON `ApiError` bodies and a central `onError`:
+      400 invalid_request · 404 not_found · 501 not_implemented · 500 internal_error.
+- [x] JSON 404 for unmatched routes (replaces Hono's default `text/plain`).
+- [x] Health endpoint (`GET /health`) and OpenAPI document (`GET /openapi.json`).
+- [x] CORS on the read-only `/v1/*` surface (`origin:*`, GET/OPTIONS) for browser SDK/agent
+      clients. Auth + rate limits are Plan 04 — left as clean seams, not implemented here.
+- [~] `GET /delta` / `POST /claims/verify` bodies — deferred to W5/W6 (digest synthesis +
+      contradiction reasoning). Routes + validation are complete; only the bodies remain.
 
 Exit criteria:
 
-- [ ] REST endpoints pass contract and fixture tests.
+- [x] REST endpoints pass contract validation + the `packages/api` HTTP test suite (37 tests).
+      Live valid+invalid checks run against `lntercal.vercel.app/api/v1/*` and a local run on
+      the Neon branch.
 
 Suggested verification:
 
-- `pnpm test -- api`
-- `pnpm openapi:check`
+- `pnpm --filter @intercal/api test`
+- `pnpm typecheck` · `pnpm build`
 
 ## Workstream 3: MCP Server
 

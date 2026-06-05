@@ -12,17 +12,30 @@ const addFormats = (addFormatsMod.default ?? addFormatsMod) as typeof import('aj
 
 // One Ajv instance; query strings are coerced to the schema's scalar types. `strict: false`
 // tolerates the extra annotation keywords the TypeSpec JSON-Schema emitter produces.
+// `removeAdditional: false` + an injected `additionalProperties: false` (see below) makes
+// unknown query params a hard 400 rather than silently forwarding them to the query layer.
 const ajv = new Ajv2020({ coerceTypes: true, strict: false, allErrors: true, useDefaults: true });
 addFormats(ajv);
 
 const cache = new Map<string, ValidateFunction>();
 
-/** Compile (and cache) a validator for a generated JSON-Schema model, e.g. "DeltaQuery". */
+/**
+ * Compile (and cache) a validator for a generated JSON-Schema query model, e.g. "DeltaQuery".
+ *
+ * The generated schema is the single contract source and is never mutated. We compile against a
+ * shallow clone with `additionalProperties: false` injected so query params outside the contract
+ * are rejected — the contract enumerates the exact params for each operation, so anything else is
+ * an invalid request, not a silently-ignored extra.
+ */
 export function validatorFor(modelName: string): ValidateFunction {
   const cached = cache.get(modelName);
   if (cached) return cached;
-  const schema = getJsonSchema(modelName) as Record<string, unknown>;
-  const validate = ajv.compile(schema);
+  const schema = getJsonSchema(modelName);
+  // Clone (do not mutate the shared generated artifact) and drop `$id`: Ajv would otherwise
+  // register the same id twice across the two compile paths and throw.
+  const { $id: _id, ...rest } = schema;
+  const strictSchema = { ...rest, additionalProperties: false };
+  const validate = ajv.compile(strictSchema);
   cache.set(modelName, validate);
   return validate;
 }
@@ -31,7 +44,10 @@ export function formatErrors(validate: ValidateFunction): Record<string, unknown
   return {
     issues: (validate.errors ?? []).map((e) => ({
       path: e.instancePath || e.schemaPath,
-      message: e.message ?? 'invalid',
+      message:
+        e.keyword === 'additionalProperties' && e.params && 'additionalProperty' in e.params
+          ? `unknown query parameter: ${(e.params as { additionalProperty: string }).additionalProperty}`
+          : (e.message ?? 'invalid'),
     })),
   };
 }

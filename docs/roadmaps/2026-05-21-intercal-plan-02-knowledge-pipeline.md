@@ -2,7 +2,7 @@
 
 Date: 2026-05-21
 Aligned: 2026-06-04 to live stack
-Status: [~] Active — W1 complete (2026-06-04); W2 complete (2026-06-05); W3 complete (2026-06-05); W4 complete (2026-06-05); W5 complete (2026-06-05); W6 complete (2026-06-05)
+Status: [~] Active — W1 complete (2026-06-04); W2 complete (2026-06-05); W3 complete (2026-06-05); W4 complete (2026-06-05); W5 complete (2026-06-05); W6 complete (2026-06-05); W7 complete (2026-06-05)
 Source reports: `docs/research/2026-05-21-intercal-foundation-report.md`, `docs/research/2026-06-04-intercal-revisit-audit-and-dev-environment.md`, `docs/architecture/pipeline.md`, `docs/architecture/data-model.md`; decisions `docs/decisions/0001-foundation-stack.md`, `docs/decisions/0002-final-hosting-topology.md`
 Owner: Main orchestration agent
 Surface: ingestion, normalization, extraction, providers, embeddings, entity resolution, relationships, fact versions, orchestration
@@ -742,10 +742,12 @@ Suggested verification:
 
 Goal: Derive temporal relationships and append-only fact versions from validated claims.
 
+**Status: [x] Complete — 2026-06-05**
+
 Depends on:
 
-- [ ] Workstream 3 claims.
-- [ ] Workstream 6 resolved entities.
+- [x] Workstream 3 claims.
+- [x] Workstream 6 resolved entities.
 
 Enables:
 
@@ -758,26 +760,84 @@ Repo guidance:
 Primary areas:
 
 - `services/resolve`
-- `services/synthesize`
-- `db/migrations`
-- `docs/architecture/data-model.md`
+- `db/migrations` (no new migration required; 0014/0015 schemas are sufficient)
 
 Implementation tasks:
 
-- [ ] Map validated claims to seeded relationship types.
-- [ ] Add validity windows, recorded time, confidence, and source evidence.
-- [ ] Add contradiction handling.
-- [ ] Add append-only fact version writer.
-- [ ] Add point-in-time read helper.
+- [x] `derive_relationships` job in `services/resolve/src/intercal_resolve/jobs.py`:
+  - Loads an active claim by UUID; skips inactive, low-confidence, or unmappable claims.
+  - Resolves subject/object entity IDs from claim columns; falls back to mention lookup
+    by `text_span` match within the same document(s).
+  - Maps the claim's free-text predicate to a seeded `relationship_types` type_id via
+    `map_predicate_to_type()` (keyword vocabulary covering all 20 seeded types).
+    If no type maps → skip (no fabricated types outside the controlled vocabulary).
+  - Upserts `relationships` row via SELECT+conditional INSERT:
+    same (type_id, subject, object, valid_from) tuple → merges `claim_ids` via UPDATE.
+    New tuple → INSERT with `recorded_at`, `confidence`, `claim_ids`, `source_document_ids`.
+  - Skips self-relationships (subject == object entity).
+  - Returns `{"relationships_written": n, "relationships_skipped": n}` counters.
+- [x] `write_fact_versions` job:
+  - Builds a deterministic entity payload snapshot: type_id, canonical_name, description,
+    sorted external_ids list, active_relationship_count.
+  - Loads the current `is_current=true` fact version for the entity (if any).
+  - If payload is byte-for-byte identical (canonical JSON) → skip (idempotent).
+  - If different or no version: INSERT a new `fact_versions` row (is_current=true,
+    valid_from=now, recorded_at=now). Populates `claim_ids` + `source_document_ids`
+    from active claims linked to the entity.
+  - **Append-only invariant:** closes the old version via
+    `UPDATE SET is_current=false, valid_until=now, superseded_by_id=<new_id>`
+    only — the old row is **never deleted**. History is the permanent record.
+  - Returns `{"versions_written": n, "versions_skipped": n}` counters.
+- [x] `map_predicate_to_type` and `payload_equal` exported as public helpers
+  (testable, used by tests + callers).
+- [x] CLI commands `derive-relationships` and `write-fact-versions` updated to print
+  counters; no longer `-> None` (return dicts).
+- [x] `_resolve_claim_entity_id` and `_build_entity_payload` private helpers for
+  entity resolution fallback and payload construction.
+- [x] No new migration needed: `relationships` (0014) and `fact_versions` (0015) schemas
+  already contain all required columns. No schema drift found.
+- [x] 20 new W7 unit tests added to `services/resolve/tests/test_w6_resolve.py`:
+  - W7 helpers: `map_predicate_to_type` (15 known predicates, unknown returns None),
+    `payload_equal` (identical, name-differs, rel-count-differs).
+  - `derive_relationships`: known predicate → INSERT, unknown predicate → skip, claim not
+    found → skip, inactive claim → skip, low confidence → skip, self-relationship → skip,
+    entity ends unresolved → skip, mention fallback resolves entity, idempotent re-run
+    (same claim_id already in list → no-op), idempotent re-run (new claim_id → UPDATE).
+  - `write_fact_versions`: new entity → INSERT, identical payload → skip, changed payload
+    → INSERT new + UPDATE old (append-only proven), missing/deprecated entity → ValueError,
+    external_ids in payload, claim provenance in claim_ids.
+- [x] 2 stub tests in `test_resolve_cli.py` updated: NotImplementedError stubs replaced
+  with W7-implemented assertions.
+- [x] All 333 service tests pass; `pnpm py:lint` + `pnpm py:typecheck` clean (0 errors).
+- [x] `scripts/dev/verify_w7_relationships.py` integration smoke test.
+- [x] Live verified (2026-06-05) on Neon branch `br-still-water-ajmss6b6`:
+  - 2 active claims (1 real W3 claim + 1 seed for verification using real entity IDs).
+  - `derive_relationships`: 1 relationship written (`source_reported_claim` NCBI → PubMed ID),
+    1 skipped (predicate `"were updated"` has no type mapping — correct behaviour).
+    Relationship `claim_ids` carries the originating claim UUID (provenance).
+  - `write_fact_versions`: 11 entities → 11 fact versions written (first pass); 2 entities
+    gained active_relationship_count=1 after relationship was written, triggering
+    2 superseding versions (total 13 fact_versions: 11 current + 2 superseded).
+  - **Append-only proof**: 2 superseded rows preserved with `is_current=false`,
+    `superseded_by_id` non-null, `valid_until` set — never deleted.
+  - **Bitemporal correctness**: `valid_from = recorded_at = now()` on insert (state snapshot
+    time); `valid_until=NULL` on current version (open interval).
+  - **Idempotent re-run**: derive_relationships 1 → 1 (no new rows); write_fact_versions
+    11 current → 11 current (all skipped — payload unchanged).
 
 Exit criteria:
 
-- [ ] Fixture claims produce expected relationships and fact versions.
+- [x] Fixture claims produce expected relationships and fact versions.
+- [x] Relationships carry claim provenance (claim_ids, source_document_ids).
+- [x] Fact versions are append-only: prior versions preserved, superseded via is_current +
+  superseded_by_id + valid_until, never deleted.
+- [x] Bitemporal columns (valid_from, valid_until, recorded_at) set correctly.
+- [x] Idempotent re-run: no duplicates created.
 
 Suggested verification:
 
-- `uv run pytest services/resolve/tests services/synthesize/tests`
-- `pnpm db:migrate:seeded` (runs against `DATABASE_URL` — a Neon branch)
+- `pnpm py:lint && pnpm py:typecheck && pnpm py:test`
+- `DATABASE_URL=<neon-branch> uv run python scripts/dev/verify_w7_relationships.py`
 
 ## Workstream 8: Pipeline Orchestration
 

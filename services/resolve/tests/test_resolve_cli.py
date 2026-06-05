@@ -37,15 +37,25 @@ async def test_resolve_entities_is_implemented() -> None:
 
 
 @pytest.mark.asyncio
-async def test_derive_relationships_raises_not_implemented() -> None:
-    with pytest.raises(NotImplementedError, match="Plan 02"):
+async def test_derive_relationships_is_implemented() -> None:
+    """derive_relationships is W7-implemented; raises ValueError on bad UUID."""
+    try:
         await derive_relationships(claim_id="test-claim", pool=None)
+    except NotImplementedError as exc:
+        raise AssertionError("derive_relationships should be implemented (W7)") from exc
+    except (ValueError, AttributeError):
+        pass  # expected: bad UUID or None pool
 
 
 @pytest.mark.asyncio
-async def test_write_fact_versions_raises_not_implemented() -> None:
-    with pytest.raises(NotImplementedError, match="Plan 02"):
+async def test_write_fact_versions_is_implemented() -> None:
+    """write_fact_versions is W7-implemented; raises ValueError on bad UUID."""
+    try:
         await write_fact_versions(entity_id="test-entity", pool=None)
+    except NotImplementedError as exc:
+        raise AssertionError("write_fact_versions should be implemented (W7)") from exc
+    except (ValueError, AttributeError):
+        pass  # expected: bad UUID or None pool
 
 
 def test_cli_help_lists_all_commands() -> None:

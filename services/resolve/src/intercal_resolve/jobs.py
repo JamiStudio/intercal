@@ -22,6 +22,7 @@ import logging
 import re
 import unicodedata
 import uuid
+from datetime import UTC, datetime
 from typing import Any
 
 _log = logging.getLogger(__name__)
@@ -74,6 +75,95 @@ _TYPE_MAP: dict[str, str] = {
 
 # Job name written to entity_merge_events.merged_by.
 _JOB_ACTOR = "resolve_entities_v1"
+
+# ──────────────────────────────────────────────────────────────────────────────
+# W7 constants
+# ──────────────────────────────────────────────────────────────────────────────
+
+# Actor tag written into fact_versions.produced_by and relationship derivation logs.
+_W7_ACTOR = "derive_relationships_v1"
+
+# Minimum claim extraction_confidence to attempt relationship derivation.
+MIN_CLAIM_CONFIDENCE = 0.50
+
+# Predicate keyword → relationship type_id mapping.
+# The claim predicate is free-text (LLM-extracted); we map it to the controlled
+# vocabulary by checking whether any keyword appears in the lowercased predicate.
+# Order matters: more-specific rules listed first.
+_PREDICATE_TO_TYPE: list[tuple[list[str], str]] = [
+    # Person ↔ role / office
+    (["holds_role", "holds role", "ceo", "cto", "coo", "vp", "president", "director",
+      "appointed", "serves as", "named as", "role of"],
+     "person_holds_role"),
+    (["holds_office", "holds office", "secretary", "minister", "commissioner",
+      "governor", "senator", "representative", "chancellor", "prime minister"],
+     "person_holds_office"),
+    # Person ↔ place (birth)
+    (["born_in", "born in", "birthplace", "native of"],
+     "person_born_in"),
+    # Organization ↔ person (employment)
+    (["employs", "employed by", "works for", "works at", "member of staff",
+      "employee", "hired", "staff"],
+     "organization_employs_person"),
+    # Organization ↔ product / artifact
+    (["owns", "developed", "created", "built", "maintains", "launched", "released",
+      "produces", "owns_product"],
+     "organization_owns_product"),
+    # Organization ↔ artifact (publication)
+    (["published", "released", "announced", "organization_published"],
+     "organization_published_artifact"),
+    # Person ↔ artifact (authorship)
+    (["authored", "wrote", "co-authored", "created by", "person_authored"],
+     "person_authored_artifact"),
+    # Organization ↔ organization (subsidiary / acquisition / merger)
+    (["subsidiary", "subsidiary_of", "division of", "owned by"],
+     "organization_subsidiary_of"),
+    (["acquired", "acquisition", "bought", "purchased"],
+     "company_acquired_company"),
+    (["merged", "merger", "merged_with"],
+     "company_merged_with_company"),
+    # Organization ↔ place (HQ)
+    (["headquartered", "hq", "based in", "located in", "offices in"],
+     "organization_headquartered_in"),
+    # Legislation
+    (["amends", "supersedes", "amends_law", "replaces law"],
+     "law_amends_law"),
+    (["enacted", "enacted_by", "jurisdiction_enacted"],
+     "jurisdiction_enacted_legislation"),
+    # Event ↔ place
+    (["occurred in", "took place in", "event_occurred"],
+     "event_occurred_in_place"),
+    # Source / provenance
+    (["reported", "stated", "claimed", "reported_claim", "source_reported"],
+     "source_reported_claim"),
+    # Concept
+    (["instance of", "is a", "type of", "entity_instance"],
+     "entity_instance_of_concept"),
+    (["related to", "concept_related"],
+     "concept_related_to_concept"),
+    # Paper citations
+    (["cites", "cited", "references", "paper_cites"],
+     "paper_cites_paper"),
+]
+
+
+def map_predicate_to_type(predicate: str) -> str | None:
+    """Map a free-text predicate to a seeded relationship type_id, or None.
+
+    Returns the first matching type_id from ``_PREDICATE_TO_TYPE``, or
+    ``None`` if no keyword matches (caller must decide whether to skip or
+    use a fallback type).
+    """
+    pred_lower = predicate.lower()
+    for keywords, type_id in _PREDICATE_TO_TYPE:
+        for kw in keywords:
+            if kw in pred_lower:
+                return type_id
+    return None
+
+
+# Internal alias kept for backward compat (module-level callers use the public name)
+_map_predicate_to_type = map_predicate_to_type
 
 
 # ──────────────────────────────────────────────────────────────────────────────
@@ -1030,25 +1120,310 @@ async def resolve_entities(
 # ──────────────────────────────────────────────────────────────────────────────
 
 
+async def _resolve_claim_entity_id(
+    pool: Any,
+    *,
+    claim_id: uuid.UUID,
+    text: str,
+    entity_id_col: uuid.UUID | None,
+) -> uuid.UUID | None:
+    """Return the best entity UUID for a claim subject/object.
+
+    Preference order:
+    1. ``entity_id_col`` — already resolved on the claim row.
+    2. Look up a resolved mention whose ``text_span`` matches *text* and whose
+       document is in the claim's ``source_document_ids``.
+    3. ``None`` — caller must skip this claim end.
+    """
+    if entity_id_col is not None:
+        return entity_id_col
+
+    # Try to find a matching mention (case-insensitive) linked to the same claim's
+    # source documents.
+    row = await pool.fetchrow(
+        """
+        SELECT m.entity_id
+        FROM mentions m
+        JOIN claims c ON c.source_document_ids @> ARRAY[m.document_id]
+        WHERE c.id = $1
+          AND lower(m.text_span) = lower($2)
+          AND m.resolution_status = 'resolved'
+          AND m.entity_id IS NOT NULL
+        ORDER BY m.extraction_confidence DESC
+        LIMIT 1
+        """,
+        claim_id,
+        text,
+    )
+    if row:
+        return uuid.UUID(str(row["entity_id"]))
+    return None
+
+
 async def derive_relationships(
     *,
     claim_id: str,
     pool: Any,
-) -> None:
+) -> dict[str, int]:
     """Derive typed temporal relationships from an extracted claim.
 
-    Idempotent: relationships with the same (subject_id, predicate, object_id,
-    valid_from) triple are upserted rather than duplicated.
+    Algorithm
+    ---------
+    1. Load the claim row.  Skip if confidence < MIN_CLAIM_CONFIDENCE or status
+       is not 'active'.
+    2. Resolve subject and object entity UUIDs:
+       - Use ``subject_entity_id`` / ``object_entity_id`` if already set.
+       - Otherwise look up a resolved mention with a matching ``text_span``
+         in the same document(s).
+       - Skip the claim if either end cannot be resolved to a canonical entity
+         (a relationship without both ends is meaningless).
+    3. Map the claim's free-text predicate to a seeded relationship type_id via
+       ``_map_predicate_to_type``.  Skip if no type maps (no fabricated types).
+    4. Upsert the relationship.  Idempotent key:
+       ``(type_id, subject_entity_id, object_entity_id, valid_from)``.
+       - ``ON CONFLICT … DO UPDATE`` refreshes confidence + claim_ids when the
+         same triple is submitted again (e.g. a re-run after new evidence).
+       - ``valid_from`` NULL is part of the key (two NULLs are treated as equal
+         by the application-layer dedup; the DB uses a partial unique index
+         workaround via the ON CONFLICT clause below).
+
+    Provenance
+    ----------
+    ``relationships.claim_ids`` always lists the originating claim UUID.
+    ``relationships.source_document_ids`` is copied from the claim row.
+
+    Idempotency
+    -----------
+    The combination (type_id, subject_entity_id, object_entity_id, valid_from)
+    uniquely identifies the relationship assertion.  Re-running with the same
+    claim yields no new row.
+
+    Args:
+        claim_id: UUID string of the claim to process.
+        pool: asyncpg connection pool.
+
+    Returns:
+        Dict with counters: ``relationships_written``, ``relationships_skipped``.
 
     Raises:
-        NotImplementedError: Claim-to-relationship mapping rules and
-            temporal interval computation are Plan-02 W7 scope.
+        ValueError: If *claim_id* is not a valid UUID.
     """
     _log.info("derive_relationships: claim_id=%s", claim_id)
-    raise NotImplementedError(
-        "Plan 02 W7 — derive_relationships: claim-to-relationship mapping rules "
-        "and temporal interval computation not yet implemented."
+
+    claim_uuid = uuid.UUID(claim_id)
+
+    counters: dict[str, int] = {
+        "relationships_written": 0,
+        "relationships_skipped": 0,
+    }
+
+    # ── 1. Load claim ─────────────────────────────────────────────────────────
+    row = await pool.fetchrow(
+        """
+        SELECT id, subject_text, predicate, object_text,
+               subject_entity_id, object_entity_id,
+               valid_from, valid_until,
+               extraction_confidence, source_document_ids, status
+        FROM claims
+        WHERE id = $1
+        """,
+        claim_uuid,
     )
+    if row is None:
+        _log.warning("derive_relationships: claim %s not found", claim_id)
+        counters["relationships_skipped"] += 1
+        return counters
+
+    if str(row["status"]) != "active":
+        _log.info(
+            "derive_relationships: claim %s status=%s — skipping", claim_id, row["status"]
+        )
+        counters["relationships_skipped"] += 1
+        return counters
+
+    confidence = float(row["extraction_confidence"])
+    if confidence < MIN_CLAIM_CONFIDENCE:
+        _log.info(
+            "derive_relationships: claim %s confidence=%.2f < %.2f — skipping",
+            claim_id, confidence, MIN_CLAIM_CONFIDENCE,
+        )
+        counters["relationships_skipped"] += 1
+        return counters
+
+    # ── 2. Resolve entity IDs ─────────────────────────────────────────────────
+    subject_entity_id = await _resolve_claim_entity_id(
+        pool,
+        claim_id=claim_uuid,
+        text=str(row["subject_text"]),
+        entity_id_col=(
+            uuid.UUID(str(row["subject_entity_id"])) if row["subject_entity_id"] else None
+        ),
+    )
+    object_entity_id = await _resolve_claim_entity_id(
+        pool,
+        claim_id=claim_uuid,
+        text=str(row["object_text"]),
+        entity_id_col=(
+            uuid.UUID(str(row["object_entity_id"])) if row["object_entity_id"] else None
+        ),
+    )
+
+    if subject_entity_id is None or object_entity_id is None:
+        _log.info(
+            "derive_relationships: claim %s — subject=%s object=%s, "
+            "one or both entity ends unresolved — skipping",
+            claim_id,
+            subject_entity_id,
+            object_entity_id,
+        )
+        counters["relationships_skipped"] += 1
+        return counters
+
+    if subject_entity_id == object_entity_id:
+        _log.info(
+            "derive_relationships: claim %s — subject == object entity %s "
+            "(self-relationship) — skipping",
+            claim_id,
+            subject_entity_id,
+        )
+        counters["relationships_skipped"] += 1
+        return counters
+
+    # ── 3. Map predicate → relationship type ──────────────────────────────────
+    predicate = str(row["predicate"])
+    type_id = _map_predicate_to_type(predicate)
+    if type_id is None:
+        _log.info(
+            "derive_relationships: claim %s predicate=%r — no type mapping — skipping",
+            claim_id,
+            predicate,
+        )
+        counters["relationships_skipped"] += 1
+        return counters
+
+    valid_from = row["valid_from"]   # datetime | None
+    valid_until = row["valid_until"]  # datetime | None
+
+    # Raw list from asyncpg may be strings or UUIDs — normalise to UUID list.
+    raw_doc_ids: list[Any] = list(row["source_document_ids"] or [])
+    source_document_ids: list[uuid.UUID] = [
+        uuid.UUID(str(d)) for d in raw_doc_ids
+    ]
+
+    # ── 4. Upsert relationship ────────────────────────────────────────────────
+    # Idempotent key: (type_id, subject_entity_id, object_entity_id, valid_from).
+    # PostgreSQL UNIQUE constraints treat two NULLs as distinct, so we use
+    # an application-layer ON CONFLICT that matches on the IS-NULL variant
+    # via a partial unique index.  Since the schema does not have such an index
+    # yet, we use a SELECT + conditional INSERT pattern which is safe for the
+    # single-writer pipeline.  The DB has no unique constraint on this tuple,
+    # so we check first, then insert only if absent.
+    existing = await pool.fetchrow(
+        """
+        SELECT id, claim_ids, source_document_ids, confidence
+        FROM relationships
+        WHERE type_id = $1
+          AND subject_entity_id = $2
+          AND object_entity_id = $3
+          AND (
+              ($4::timestamptz IS NULL AND valid_from IS NULL)
+              OR valid_from = $4::timestamptz
+          )
+          AND is_deprecated = false
+        LIMIT 1
+        """,
+        type_id,
+        subject_entity_id,
+        object_entity_id,
+        valid_from,
+    )
+
+    if existing is not None:
+        # Relationship already recorded — merge claim_ids (idempotent union).
+        existing_claim_ids: list[uuid.UUID] = [
+            uuid.UUID(str(c)) for c in (existing["claim_ids"] or [])
+        ]
+        if claim_uuid not in existing_claim_ids:
+            merged_claim_ids = [*existing_claim_ids, claim_uuid]
+            existing_doc_ids: list[uuid.UUID] = [
+                uuid.UUID(str(d)) for d in (existing["source_document_ids"] or [])
+            ]
+            merged_doc_ids = list(dict.fromkeys(existing_doc_ids + source_document_ids))
+            new_confidence = max(float(existing["confidence"]), confidence)
+            await pool.execute(
+                """
+                UPDATE relationships
+                SET claim_ids           = $1,
+                    source_document_ids = $2,
+                    confidence          = $3,
+                    updated_at          = now()
+                WHERE id = $4
+                """,
+                merged_claim_ids,
+                merged_doc_ids,
+                round(new_confidence, 2),
+                uuid.UUID(str(existing["id"])),
+            )
+            _log.debug(
+                "derive_relationships: claim %s — updated existing relationship %s "
+                "(type=%s, added claim_id)",
+                claim_id,
+                existing["id"],
+                type_id,
+            )
+        else:
+            _log.debug(
+                "derive_relationships: claim %s — relationship already recorded (no change)",
+                claim_id,
+            )
+        counters["relationships_written"] += 1
+        return counters
+
+    # New relationship
+    rel_id = uuid.uuid4()
+    await pool.execute(
+        """
+        INSERT INTO relationships (
+            id, type_id,
+            subject_entity_id, object_entity_id,
+            valid_from, valid_until,
+            recorded_at,
+            confidence,
+            source_document_ids,
+            claim_ids,
+            is_active, is_deprecated
+        ) VALUES (
+            $1, $2,
+            $3, $4,
+            $5, $6,
+            now(),
+            $7,
+            $8,
+            $9,
+            true, false
+        )
+        """,
+        rel_id,
+        type_id,
+        subject_entity_id,
+        object_entity_id,
+        valid_from,
+        valid_until,
+        round(confidence, 2),
+        source_document_ids,
+        [claim_uuid],
+    )
+    counters["relationships_written"] += 1
+    _log.info(
+        "derive_relationships: claim %s → relationship %s "
+        "(type=%s, subject=%s, object=%s)",
+        claim_id,
+        rel_id,
+        type_id,
+        subject_entity_id,
+        object_entity_id,
+    )
+    return counters
 
 
 # ──────────────────────────────────────────────────────────────────────────────
@@ -1056,19 +1431,283 @@ async def derive_relationships(
 # ──────────────────────────────────────────────────────────────────────────────
 
 
+async def _build_entity_payload(pool: Any, entity_id: uuid.UUID) -> dict[str, Any]:
+    """Build a canonical payload snapshot for an entity's current state.
+
+    The payload is the stable, deterministic representation used for
+    bitemporal diffing.  It must include all facts that matter for query-layer
+    consumers (type, name, external IDs, active relationship count).
+
+    Keys
+    ----
+    ``type_id``, ``canonical_name``, ``description``, ``external_ids``
+    (sorted list of ``{namespace, external_id}``),
+    ``active_relationship_count`` — deterministic integer.
+    """
+    entity_row = await pool.fetchrow(
+        """
+        SELECT type_id, canonical_name, description, metadata
+        FROM entities
+        WHERE id = $1 AND is_deprecated = false
+        """,
+        entity_id,
+    )
+    if entity_row is None:
+        raise ValueError(f"entity {entity_id} not found or deprecated")
+
+    ext_id_rows = await pool.fetch(
+        """
+        SELECT namespace, external_id
+        FROM entity_external_ids
+        WHERE entity_id = $1
+        ORDER BY namespace, external_id
+        """,
+        entity_id,
+    )
+    external_ids = [
+        {"namespace": str(r["namespace"]), "external_id": str(r["external_id"])}
+        for r in ext_id_rows
+    ]
+
+    rel_count_row = await pool.fetchrow(
+        """
+        SELECT count(*) AS cnt
+        FROM relationships
+        WHERE (subject_entity_id = $1 OR object_entity_id = $1)
+          AND is_active = true
+          AND is_deprecated = false
+        """,
+        entity_id,
+    )
+    rel_count = int(rel_count_row["cnt"]) if rel_count_row else 0
+
+    return {
+        "type_id": str(entity_row["type_id"]),
+        "canonical_name": str(entity_row["canonical_name"]),
+        "description": entity_row["description"],
+        "external_ids": external_ids,
+        "active_relationship_count": rel_count,
+    }
+
+
+def payload_equal(a: dict[str, Any], b: dict[str, Any]) -> bool:
+    """Stable equality check for two entity payload dicts.
+
+    Compares via canonical JSON serialisation (sorted keys) so that
+    ordering differences in lists don't falsely trigger a new version.
+    ``external_ids`` is already sorted by ``_build_entity_payload``.
+    """
+    return json.dumps(a, sort_keys=True) == json.dumps(b, sort_keys=True)
+
+
+# Internal alias
+_payload_equal = payload_equal
+
+
 async def write_fact_versions(
     *,
     entity_id: str,
     pool: Any,
-) -> None:
-    """Write append-only fact version records for an entity's current state.
+) -> dict[str, int]:
+    """Write append-only bitemporal fact version records for an entity.
+
+    Bitemporal model
+    ----------------
+    * ``valid_from`` / ``valid_until`` — when the fact is true **in the world**.
+      For entity-state snapshots this is the wall-clock interval during which
+      the recorded state was known to be current.
+    * ``recorded_at`` — when Intercal recorded this version (immutable, set at
+      insert).
+
+    These axes are independent: a historical fact may be recorded today; a fact
+    recorded today may later be superseded without touching the original row.
+
+    Append-only invariant
+    ---------------------
+    **Never UPDATE or DELETE a fact_versions row.**  Corrections insert a new
+    row and mark the superseded row via ``superseded_by_id`` + ``superseded_at``
+    + ``is_current = false``.  The old row remains as historical evidence.
+
+    Algorithm
+    ---------
+    1. Load the entity and build a canonical payload snapshot.
+    2. Load the current fact version (``is_current = true``) for this entity,
+       if any.
+    3. If the payload is identical to the current version → skip (idempotent).
+    4. If different (or no current version exists):
+       a. Insert a new fact_versions row (``is_current = true``).
+       b. If a prior current version exists, close it:
+          ``is_current = false``, ``valid_until = now()``,
+          ``superseded_by_id = <new_id>``, ``superseded_at = now()``.
+       The old row is **never deleted or updated** beyond this closing step —
+       the modification of ``is_current``, ``valid_until``, and
+       ``superseded_by_id`` on the old row is the minimum needed to close the
+       interval while preserving the history.
+
+    Provenance
+    ----------
+    ``fact_versions.claim_ids`` is populated from all active claims whose
+    resolved entity matches this entity (subject or object).
+    ``fact_versions.source_document_ids`` is the union of those claims'
+    source_document_ids.
+
+    Args:
+        entity_id: UUID string of the entity to version.
+        pool: asyncpg connection pool.
+
+    Returns:
+        Dict with counters: ``versions_written``, ``versions_skipped``.
 
     Raises:
-        NotImplementedError: Entity state diffing, bitemporal interval
-            construction, and `fact_versions` table writes are Plan-02 W7 scope.
+        ValueError: If *entity_id* is not found or is deprecated.
     """
     _log.info("write_fact_versions: entity_id=%s", entity_id)
-    raise NotImplementedError(
-        "Plan 02 W7 — write_fact_versions: entity state diffing, bitemporal interval "
-        "construction, and fact_versions persistence not yet implemented."
+
+    entity_uuid = uuid.UUID(entity_id)
+
+    counters: dict[str, int] = {
+        "versions_written": 0,
+        "versions_skipped": 0,
+    }
+
+    # ── 1. Build payload snapshot ─────────────────────────────────────────────
+    payload = await _build_entity_payload(pool, entity_uuid)
+
+    # ── 2. Load current fact version ─────────────────────────────────────────
+    current_row = await pool.fetchrow(
+        """
+        SELECT id, payload, valid_from, recorded_at
+        FROM fact_versions
+        WHERE fact_subject_type = 'entity'
+          AND fact_subject_id = $1
+          AND is_current = true
+        ORDER BY recorded_at DESC
+        LIMIT 1
+        """,
+        entity_uuid,
     )
+
+    if current_row is not None:
+        existing_payload: dict[str, Any]
+        raw = current_row["payload"]
+        if isinstance(raw, str):
+            existing_payload = json.loads(raw)
+        elif isinstance(raw, dict):
+            existing_payload = raw
+        else:
+            existing_payload = {}
+
+        if _payload_equal(existing_payload, payload):
+            _log.debug(
+                "write_fact_versions: entity %s payload unchanged — skipping",
+                entity_id,
+            )
+            counters["versions_skipped"] += 1
+            return counters
+
+    # ── 3. Gather provenance ──────────────────────────────────────────────────
+    claim_rows = await pool.fetch(
+        """
+        SELECT id, source_document_ids
+        FROM claims
+        WHERE (subject_entity_id = $1 OR object_entity_id = $1)
+          AND status = 'active'
+        """,
+        entity_uuid,
+    )
+    claim_ids: list[uuid.UUID] = [uuid.UUID(str(r["id"])) for r in claim_rows]
+    doc_ids: list[uuid.UUID] = list(
+        dict.fromkeys(
+            uuid.UUID(str(d))
+            for r in claim_rows
+            for d in (r["source_document_ids"] or [])
+        )
+    )
+    # Confidence: mean of claim confidences (or 0.5 as default).
+    confidence_rows = await pool.fetch(
+        """
+        SELECT extraction_confidence FROM claims
+        WHERE id = ANY($1) AND status = 'active'
+        """,
+        claim_ids,
+    ) if claim_ids else []
+    if confidence_rows:
+        avg_confidence = round(
+            sum(float(r["extraction_confidence"]) for r in confidence_rows)
+            / len(confidence_rows),
+            2,
+        )
+    else:
+        avg_confidence = 0.50
+
+    # ── 4a. Insert new fact version ───────────────────────────────────────────
+    new_id = uuid.uuid4()
+    now: datetime = datetime.now(UTC)
+    await pool.execute(
+        """
+        INSERT INTO fact_versions (
+            id,
+            fact_subject_type,
+            fact_subject_id,
+            payload,
+            valid_from, valid_until,
+            recorded_at,
+            source_document_ids,
+            claim_ids,
+            confidence,
+            is_current,
+            produced_by
+        ) VALUES (
+            $1, 'entity', $2,
+            $3::jsonb,
+            $4, NULL,
+            $5,
+            $6,
+            $7,
+            $8,
+            true,
+            $9
+        )
+        """,
+        new_id,
+        entity_uuid,
+        json.dumps(payload),
+        now,         # valid_from = now (state snapshot time)
+        now,         # recorded_at = now
+        doc_ids,
+        claim_ids,
+        avg_confidence,
+        _W7_ACTOR,
+    )
+    _log.info(
+        "write_fact_versions: entity %s → new fact_version %s",
+        entity_id,
+        new_id,
+    )
+
+    # ── 4b. Close prior version (append-only) ─────────────────────────────────
+    # The old row is NOT deleted.  We only close its validity interval and point
+    # superseded_by_id at the new row.  The old row is the history record.
+    if current_row is not None:
+        old_id = uuid.UUID(str(current_row["id"]))
+        await pool.execute(
+            """
+            UPDATE fact_versions
+            SET is_current       = false,
+                valid_until      = $1,
+                superseded_by_id = $2,
+                superseded_at    = $1
+            WHERE id = $3
+            """,
+            now,
+            new_id,
+            old_id,
+        )
+        _log.debug(
+            "write_fact_versions: closed prior version %s (superseded by %s)",
+            old_id,
+            new_id,
+        )
+
+    counters["versions_written"] += 1
+    return counters

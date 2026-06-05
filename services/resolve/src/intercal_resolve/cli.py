@@ -80,7 +80,8 @@ def derive_relationships_cmd(
         from intercal_resolve.jobs import derive_relationships
 
         pool = await get_pool(cfg.database_url)
-        await derive_relationships(claim_id=claim_id, pool=pool)
+        counters = await derive_relationships(claim_id=claim_id, pool=pool)
+        print(f"derive-relationships: {counters}")
 
     asyncio.run(_run())
 
@@ -102,7 +103,8 @@ def write_fact_versions_cmd(
         from intercal_resolve.jobs import write_fact_versions
 
         pool = await get_pool(cfg.database_url)
-        await write_fact_versions(entity_id=entity_id, pool=pool)
+        counters = await write_fact_versions(entity_id=entity_id, pool=pool)
+        print(f"write-fact-versions: {counters}")
 
     asyncio.run(_run())
 

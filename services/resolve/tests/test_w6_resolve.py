@@ -1,7 +1,10 @@
-"""Unit tests for W6 entity resolution — no live network required.
+"""Unit tests for W6 entity resolution and W7 relationship/fact-version derivation.
+
+No live network required.
 
 Tests cover:
-- Helper functions (normalize_name, ordered_pair, detect_external_id)
+- Helper functions (normalize_name, ordered_pair, detect_external_id,
+  map_predicate_to_type)
 - resolve_entities core paths:
   - No unresolved mentions → returns zero counters
   - External-ID match → links mention to existing entity
@@ -12,7 +15,22 @@ Tests cover:
   - Ambiguous embedding candidate → needs_review candidate created
   - High-confidence embedding candidate → merge candidate created
   - Duplicate pair ordering (left < right UUID)
-  - derive_relationships and write_fact_versions still raise NotImplementedError (W7)
+- W7 derive_relationships:
+  - Known predicate → relationship written
+  - Unknown predicate → skipped
+  - Claim not found → skipped
+  - Claim inactive → skipped
+  - Claim low confidence → skipped
+  - Self-relationship skipped
+  - Entity ends unresolved → skipped
+  - Idempotent re-run (existing relationship merges claim_id)
+- W7 write_fact_versions:
+  - New entity → version written
+  - Same payload → skipped (idempotent)
+  - Changed payload → new version written, old version closed (append-only)
+  - Deprecated / missing entity → ValueError
+  - Provenance: claim_ids populated
+- W7 helpers (map_predicate_to_type, payload_equal)
 - CLI help and new --embeddings flag
 """
 
@@ -30,12 +48,15 @@ from intercal_resolve.jobs import (
     COSINE_MERGE_THRESHOLD,
     COSINE_REVIEW_THRESHOLD,
     EXACT_MATCH_CONFIDENCE,
+    MIN_CLAIM_CONFIDENCE,
     MIN_MENTION_CONFIDENCE,
     derive_relationships,
     detect_external_id,
     find_external_id_collisions,
+    map_predicate_to_type,
     normalize_name,
     ordered_pair,
+    payload_equal,
     resolve_entities,
     write_fact_versions,
 )
@@ -747,20 +768,597 @@ async def test_resolve_entities_returns_counter_dict() -> None:
 
 
 # ──────────────────────────────────────────────────────────────────────────────
-# derive_relationships and write_fact_versions still NotImplementedError (W7)
+# W7 helpers
 # ──────────────────────────────────────────────────────────────────────────────
 
 
-@pytest.mark.asyncio
-async def test_derive_relationships_raises_not_implemented() -> None:
-    with pytest.raises(NotImplementedError, match="Plan 02 W7"):
-        await derive_relationships(claim_id="test-claim", pool=None)
+def testmap_predicate_to_type_known_predicates() -> None:
+    assert map_predicate_to_type("holds_role") == "person_holds_role"
+    assert map_predicate_to_type("was appointed ceo") == "person_holds_role"
+    assert map_predicate_to_type("born in") == "person_born_in"
+    assert map_predicate_to_type("acquired") == "company_acquired_company"
+    assert map_predicate_to_type("employs") == "organization_employs_person"
+    assert map_predicate_to_type("published") == "organization_published_artifact"
+    assert map_predicate_to_type("authored") == "person_authored_artifact"
+    assert map_predicate_to_type("headquartered") == "organization_headquartered_in"
+    assert map_predicate_to_type("subsidiary_of") == "organization_subsidiary_of"
+    assert map_predicate_to_type("merged") == "company_merged_with_company"
+    assert map_predicate_to_type("enacted") == "jurisdiction_enacted_legislation"
+    assert map_predicate_to_type("cites") == "paper_cites_paper"
+    assert map_predicate_to_type("instance of") == "entity_instance_of_concept"
+    assert map_predicate_to_type("related to") == "concept_related_to_concept"
+    assert map_predicate_to_type("reported") == "source_reported_claim"
+
+
+def testmap_predicate_to_type_unknown_returns_none() -> None:
+    assert map_predicate_to_type("were updated") is None
+    assert map_predicate_to_type("frobulates") is None
+    assert map_predicate_to_type("") is None
+
+
+def testpayload_equal_identical() -> None:
+    p: dict[str, Any] = {
+        "type_id": "person", "canonical_name": "Alice",
+        "external_ids": [], "active_relationship_count": 0,
+    }
+    assert payload_equal(p, p.copy()) is True
+
+
+def testpayload_equal_different_name() -> None:
+    a: dict[str, Any] = {
+        "type_id": "person", "canonical_name": "Alice",
+        "external_ids": [], "active_relationship_count": 0,
+    }
+    b: dict[str, Any] = {
+        "type_id": "person", "canonical_name": "Bob",
+        "external_ids": [], "active_relationship_count": 0,
+    }
+    assert payload_equal(a, b) is False
+
+
+def testpayload_equal_different_rel_count() -> None:
+    a: dict[str, Any] = {
+        "type_id": "person", "canonical_name": "Alice",
+        "external_ids": [], "active_relationship_count": 0,
+    }
+    b = {**a, "active_relationship_count": 1}
+    assert payload_equal(a, b) is False
+
+
+# ──────────────────────────────────────────────────────────────────────────────
+# W7 derive_relationships
+# ──────────────────────────────────────────────────────────────────────────────
+
+
+def _make_claim_pool(
+    *,
+    claim: dict[str, Any] | None,
+    existing_rel: dict[str, Any] | None = None,
+    mention_entity_id: uuid.UUID | None = None,
+) -> FakePool:
+    """Build a FakePool wired for derive_relationships tests."""
+
+    class ClaimPool(FakePool):
+        async def fetchrow(self, sql: str, *args: Any) -> Any | None:
+            sql_upper = " ".join(sql.split()).upper()
+            if "FROM CLAIMS" in sql_upper and "WHERE ID = $1" in sql_upper:
+                return _FakeRecord(claim) if claim else None
+            if "FROM RELATIONSHIPS" in sql_upper and "IS_DEPRECATED = FALSE" in sql_upper:
+                return _FakeRecord(existing_rel) if existing_rel else None
+            # Mention resolution
+            if "FROM MENTIONS M" in sql_upper and "JOIN CLAIMS C" in sql_upper:
+                if mention_entity_id:
+                    return _FakeRecord({"entity_id": mention_entity_id})
+                return None
+            return None
+
+        async def fetch(self, sql: str, *args: Any) -> list[Any]:
+            return []
+
+    return ClaimPool()
 
 
 @pytest.mark.asyncio
-async def test_write_fact_versions_raises_not_implemented() -> None:
-    with pytest.raises(NotImplementedError, match="Plan 02 W7"):
-        await write_fact_versions(entity_id="test-entity", pool=None)
+async def test_derive_relationships_known_predicate_writes_relationship() -> None:
+    """A claim with a mappable predicate and resolved entity IDs → new relationship."""
+    subj = uuid.uuid4()
+    obj = uuid.uuid4()
+    claim_id = uuid.uuid4()
+    doc_id = uuid.uuid4()
+
+    pool = _make_claim_pool(claim={
+        "id": claim_id,
+        "subject_text": "Sam Altman",
+        "predicate": "holds_role",
+        "object_text": "CEO",
+        "subject_entity_id": subj,
+        "object_entity_id": obj,
+        "valid_from": None,
+        "valid_until": None,
+        "extraction_confidence": 0.90,
+        "source_document_ids": [doc_id],
+        "status": "active",
+    })
+
+    counters = await derive_relationships(claim_id=str(claim_id), pool=pool)
+
+    assert counters["relationships_written"] == 1
+    assert counters["relationships_skipped"] == 0
+
+    inserts = [
+        sql for sql, _ in pool.executed
+        if "INSERT INTO RELATIONSHIPS" in " ".join(sql.split()).upper()
+    ]
+    assert len(inserts) == 1
+
+
+@pytest.mark.asyncio
+async def test_derive_relationships_unknown_predicate_skips() -> None:
+    subj = uuid.uuid4()
+    obj = uuid.uuid4()
+    claim_id = uuid.uuid4()
+    pool = _make_claim_pool(claim={
+        "id": claim_id,
+        "subject_text": "references",
+        "predicate": "were updated",
+        "object_text": "one time",
+        "subject_entity_id": subj,
+        "object_entity_id": obj,
+        "valid_from": None,
+        "valid_until": None,
+        "extraction_confidence": 1.0,
+        "source_document_ids": [],
+        "status": "active",
+    })
+
+    counters = await derive_relationships(claim_id=str(claim_id), pool=pool)
+    assert counters["relationships_written"] == 0
+    assert counters["relationships_skipped"] == 1
+
+
+@pytest.mark.asyncio
+async def test_derive_relationships_claim_not_found_skips() -> None:
+    pool = _make_claim_pool(claim=None)
+    counters = await derive_relationships(
+        claim_id=str(uuid.uuid4()), pool=pool
+    )
+    assert counters["relationships_skipped"] == 1
+
+
+@pytest.mark.asyncio
+async def test_derive_relationships_inactive_claim_skips() -> None:
+    claim_id = uuid.uuid4()
+    pool = _make_claim_pool(claim={
+        "id": claim_id,
+        "subject_text": "A",
+        "predicate": "acquired",
+        "object_text": "B",
+        "subject_entity_id": uuid.uuid4(),
+        "object_entity_id": uuid.uuid4(),
+        "valid_from": None,
+        "valid_until": None,
+        "extraction_confidence": 0.90,
+        "source_document_ids": [],
+        "status": "superseded",
+    })
+    counters = await derive_relationships(claim_id=str(claim_id), pool=pool)
+    assert counters["relationships_skipped"] == 1
+
+
+@pytest.mark.asyncio
+async def test_derive_relationships_low_confidence_skips() -> None:
+    claim_id = uuid.uuid4()
+    pool = _make_claim_pool(claim={
+        "id": claim_id,
+        "subject_text": "A",
+        "predicate": "acquired",
+        "object_text": "B",
+        "subject_entity_id": uuid.uuid4(),
+        "object_entity_id": uuid.uuid4(),
+        "valid_from": None,
+        "valid_until": None,
+        "extraction_confidence": MIN_CLAIM_CONFIDENCE - 0.01,
+        "source_document_ids": [],
+        "status": "active",
+    })
+    counters = await derive_relationships(claim_id=str(claim_id), pool=pool)
+    assert counters["relationships_skipped"] == 1
+
+
+@pytest.mark.asyncio
+async def test_derive_relationships_self_relationship_skips() -> None:
+    eid = uuid.uuid4()
+    claim_id = uuid.uuid4()
+    pool = _make_claim_pool(claim={
+        "id": claim_id,
+        "subject_text": "X",
+        "predicate": "acquired",
+        "object_text": "X",
+        "subject_entity_id": eid,
+        "object_entity_id": eid,
+        "valid_from": None,
+        "valid_until": None,
+        "extraction_confidence": 0.9,
+        "source_document_ids": [],
+        "status": "active",
+    })
+    counters = await derive_relationships(claim_id=str(claim_id), pool=pool)
+    assert counters["relationships_skipped"] == 1
+
+
+@pytest.mark.asyncio
+async def test_derive_relationships_unresolved_entity_skips() -> None:
+    """If neither entity end can be resolved, claim is skipped."""
+    claim_id = uuid.uuid4()
+    pool = _make_claim_pool(claim={
+        "id": claim_id,
+        "subject_text": "unknown subject",
+        "predicate": "acquired",
+        "object_text": "unknown object",
+        "subject_entity_id": None,
+        "object_entity_id": None,
+        "valid_from": None,
+        "valid_until": None,
+        "extraction_confidence": 0.9,
+        "source_document_ids": [],
+        "status": "active",
+    }, mention_entity_id=None)
+    counters = await derive_relationships(claim_id=str(claim_id), pool=pool)
+    assert counters["relationships_skipped"] == 1
+
+
+@pytest.mark.asyncio
+async def test_derive_relationships_mention_fallback_resolves_entity() -> None:
+    """Subject entity resolved via mention lookup when entity_id is NULL on claim."""
+    subj = uuid.uuid4()
+    obj = uuid.uuid4()
+    claim_id = uuid.uuid4()
+
+    class MentionFallbackPool(FakePool):
+        async def fetchrow(self, sql: str, *args: Any) -> Any | None:
+            sql_upper = " ".join(sql.split()).upper()
+            if "FROM CLAIMS" in sql_upper and "WHERE ID = $1" in sql_upper:
+                return _FakeRecord({
+                    "id": claim_id,
+                    "subject_text": "OpenAI",
+                    "predicate": "acquired",
+                    "object_text": "TargetCo",
+                    "subject_entity_id": None,
+                    "object_entity_id": obj,
+                    "valid_from": None,
+                    "valid_until": None,
+                    "extraction_confidence": 0.85,
+                    "source_document_ids": [],
+                    "status": "active",
+                })
+            if "FROM MENTIONS M" in sql_upper and "JOIN CLAIMS C" in sql_upper:
+                # Only return entity for the subject lookup (first call)
+                return _FakeRecord({"entity_id": subj})
+            if "FROM RELATIONSHIPS" in sql_upper:
+                return None
+            return None
+
+        async def fetch(self, sql: str, *args: Any) -> list[Any]:
+            return []
+
+    pool = MentionFallbackPool()
+    counters = await derive_relationships(claim_id=str(claim_id), pool=pool)
+    assert counters["relationships_written"] == 1
+
+
+@pytest.mark.asyncio
+async def test_derive_relationships_idempotent_rerun_updates_claim_ids() -> None:
+    """Re-running with same claim merges into existing relationship (no new INSERT)."""
+    subj = uuid.uuid4()
+    obj = uuid.uuid4()
+    claim_id = uuid.uuid4()
+    existing_rel_id = uuid.uuid4()
+
+    pool = _make_claim_pool(
+        claim={
+            "id": claim_id,
+            "subject_text": "A",
+            "predicate": "acquired",
+            "object_text": "B",
+            "subject_entity_id": subj,
+            "object_entity_id": obj,
+            "valid_from": None,
+            "valid_until": None,
+            "extraction_confidence": 0.90,
+            "source_document_ids": [],
+            "status": "active",
+        },
+        existing_rel={
+            "id": existing_rel_id,
+            # claim already in list → no UPDATE needed
+            "claim_ids": [claim_id],
+            "source_document_ids": [],
+            "confidence": "0.90",
+        },
+    )
+
+    counters = await derive_relationships(claim_id=str(claim_id), pool=pool)
+
+    assert counters["relationships_written"] == 1
+    # No new INSERT because relationship already exists
+    inserts = [
+        sql for sql, _ in pool.executed
+        if "INSERT INTO RELATIONSHIPS" in " ".join(sql.split()).upper()
+    ]
+    assert len(inserts) == 0
+
+
+@pytest.mark.asyncio
+async def test_derive_relationships_idempotent_adds_new_claim_to_existing() -> None:
+    """Re-run with a *new* claim on the same typed edge merges the claim_id via UPDATE."""
+    subj = uuid.uuid4()
+    obj = uuid.uuid4()
+    old_claim_id = uuid.uuid4()
+    new_claim_id = uuid.uuid4()
+    existing_rel_id = uuid.uuid4()
+
+    pool = _make_claim_pool(
+        claim={
+            "id": new_claim_id,
+            "subject_text": "A",
+            "predicate": "acquired",
+            "object_text": "B",
+            "subject_entity_id": subj,
+            "object_entity_id": obj,
+            "valid_from": None,
+            "valid_until": None,
+            "extraction_confidence": 0.92,
+            "source_document_ids": [],
+            "status": "active",
+        },
+        existing_rel={
+            "id": existing_rel_id,
+            "claim_ids": [old_claim_id],
+            "source_document_ids": [],
+            "confidence": "0.90",
+        },
+    )
+
+    counters = await derive_relationships(claim_id=str(new_claim_id), pool=pool)
+    assert counters["relationships_written"] == 1
+
+    # UPDATE (not INSERT) should have been issued
+    updates = [
+        sql for sql, _ in pool.executed
+        if "UPDATE RELATIONSHIPS" in " ".join(sql.split()).upper()
+    ]
+    assert len(updates) >= 1
+
+
+# ──────────────────────────────────────────────────────────────────────────────
+# W7 write_fact_versions
+# ──────────────────────────────────────────────────────────────────────────────
+
+
+def _make_entity_pool(
+    *,
+    entity: dict[str, Any] | None,
+    external_ids: list[dict[str, Any]] | None = None,
+    current_fact_version: dict[str, Any] | None = None,
+    rel_count: int = 0,
+    claim_rows: list[dict[str, Any]] | None = None,
+) -> FakePool:
+    class EntityPool(FakePool):
+        async def fetchrow(self, sql: str, *args: Any) -> Any | None:
+            sql_upper = " ".join(sql.split()).upper()
+            if "FROM ENTITIES" in sql_upper and "IS_DEPRECATED = FALSE" in sql_upper:
+                return _FakeRecord(entity) if entity else None
+            if "FROM FACT_VERSIONS" in sql_upper and "IS_CURRENT = TRUE" in sql_upper:
+                return _FakeRecord(current_fact_version) if current_fact_version else None
+            if "COUNT(*) AS CNT" in sql_upper and "FROM RELATIONSHIPS" in sql_upper:
+                return _FakeRecord({"cnt": rel_count})
+            return None
+
+        async def fetch(self, sql: str, *args: Any) -> list[Any]:
+            sql_upper = " ".join(sql.split()).upper()
+            if "FROM ENTITY_EXTERNAL_IDS" in sql_upper:
+                return [_FakeRecord(r) for r in (external_ids or [])]
+            if "FROM CLAIMS" in sql_upper and "SUBJECT_ENTITY_ID = $1" in sql_upper:
+                return [_FakeRecord(r) for r in (claim_rows or [])]
+            if "EXTRACTION_CONFIDENCE" in sql_upper and "FROM CLAIMS" in sql_upper:
+                return [_FakeRecord(r) for r in (claim_rows or [])]
+            return []
+
+    return EntityPool()
+
+
+@pytest.mark.asyncio
+async def test_write_fact_versions_new_entity_writes_version() -> None:
+    """First call for an entity with no prior fact version → inserts new version."""
+    entity_id = uuid.uuid4()
+
+    pool = _make_entity_pool(
+        entity={
+            "type_id": "organization",
+            "canonical_name": "OpenAI",
+            "description": "AI company",
+            "metadata": {},
+        },
+        external_ids=[],
+        current_fact_version=None,
+    )
+
+    counters = await write_fact_versions(entity_id=str(entity_id), pool=pool)
+    assert counters["versions_written"] == 1
+    assert counters["versions_skipped"] == 0
+
+    inserts = [
+        sql for sql, _ in pool.executed
+        if "INSERT INTO FACT_VERSIONS" in " ".join(sql.split()).upper()
+    ]
+    assert len(inserts) == 1
+
+
+@pytest.mark.asyncio
+async def test_write_fact_versions_identical_payload_skips() -> None:
+    """Re-running with an unchanged entity state → skipped (idempotent)."""
+    entity_id = uuid.uuid4()
+    stored_payload = json.dumps({
+        "type_id": "organization",
+        "canonical_name": "OpenAI",
+        "description": "AI company",
+        "external_ids": [],
+        "active_relationship_count": 0,
+    }, sort_keys=True)
+
+    pool = _make_entity_pool(
+        entity={
+            "type_id": "organization",
+            "canonical_name": "OpenAI",
+            "description": "AI company",
+            "metadata": {},
+        },
+        external_ids=[],
+        current_fact_version={
+            "id": uuid.uuid4(),
+            "payload": stored_payload,
+            "valid_from": None,
+            "recorded_at": None,
+        },
+        rel_count=0,
+    )
+
+    counters = await write_fact_versions(entity_id=str(entity_id), pool=pool)
+    assert counters["versions_skipped"] == 1
+    assert counters["versions_written"] == 0
+
+    # No INSERT or UPDATE should have happened
+    assert len(pool.executed) == 0
+
+
+@pytest.mark.asyncio
+async def test_write_fact_versions_changed_payload_writes_and_closes_old() -> None:
+    """Changed entity state → new version inserted; old version closed (append-only)."""
+    entity_id = uuid.uuid4()
+    old_version_id = uuid.uuid4()
+
+    # Stored payload has rel_count=0; current state has rel_count=1.
+    stored_payload = json.dumps({
+        "type_id": "organization",
+        "canonical_name": "OpenAI",
+        "description": None,
+        "external_ids": [],
+        "active_relationship_count": 0,
+    }, sort_keys=True)
+
+    pool = _make_entity_pool(
+        entity={
+            "type_id": "organization",
+            "canonical_name": "OpenAI",
+            "description": None,
+            "metadata": {},
+        },
+        external_ids=[],
+        current_fact_version={
+            "id": old_version_id,
+            "payload": stored_payload,
+            "valid_from": None,
+            "recorded_at": None,
+        },
+        rel_count=1,
+    )
+
+    counters = await write_fact_versions(entity_id=str(entity_id), pool=pool)
+    assert counters["versions_written"] == 1
+
+    inserts = [
+        sql for sql, _ in pool.executed
+        if "INSERT INTO FACT_VERSIONS" in " ".join(sql.split()).upper()
+    ]
+    assert len(inserts) == 1
+
+    # Old version must be closed via UPDATE (not deleted)
+    updates = [
+        sql for sql, _ in pool.executed
+        if "UPDATE FACT_VERSIONS" in " ".join(sql.split()).upper()
+    ]
+    assert len(updates) == 1
+    # UPDATE args must include old_version_id
+    update_args = [
+        args for sql, args in pool.executed
+        if "UPDATE FACT_VERSIONS" in " ".join(sql.split()).upper()
+    ]
+    assert any(old_version_id in args for args in update_args)
+
+
+@pytest.mark.asyncio
+async def test_write_fact_versions_missing_entity_raises_value_error() -> None:
+    pool = _make_entity_pool(entity=None)
+    with pytest.raises(ValueError, match="not found or deprecated"):
+        await write_fact_versions(entity_id=str(uuid.uuid4()), pool=pool)
+
+
+@pytest.mark.asyncio
+async def test_write_fact_versions_with_external_ids_in_payload() -> None:
+    """External IDs are included in the payload for comparison."""
+    entity_id = uuid.uuid4()
+
+    pool = _make_entity_pool(
+        entity={
+            "type_id": "technical_artifact",
+            "canonical_name": "Q5401080",
+            "description": None,
+            "metadata": {},
+        },
+        external_ids=[
+            {"namespace": "wikidata", "external_id": "Q5401080"},
+        ],
+        current_fact_version=None,
+    )
+
+    counters = await write_fact_versions(entity_id=str(entity_id), pool=pool)
+    assert counters["versions_written"] == 1
+
+    # Check payload written includes the external_id
+    insert_args = [
+        args for sql, args in pool.executed
+        if "INSERT INTO FACT_VERSIONS" in " ".join(sql.split()).upper()
+    ]
+    assert len(insert_args) == 1
+    payload_arg = insert_args[0][2]  # 3rd positional arg = payload JSON
+    payload = json.loads(payload_arg)
+    assert payload["external_ids"] == [{"namespace": "wikidata", "external_id": "Q5401080"}]
+
+
+@pytest.mark.asyncio
+async def test_write_fact_versions_provenance_claim_ids() -> None:
+    """Claim IDs linked to the entity are populated in the fact version."""
+    entity_id = uuid.uuid4()
+    claim_id = uuid.uuid4()
+    doc_id = uuid.uuid4()
+
+    pool = _make_entity_pool(
+        entity={
+            "type_id": "person",
+            "canonical_name": "Sam Altman",
+            "description": None,
+            "metadata": {},
+        },
+        external_ids=[],
+        current_fact_version=None,
+        claim_rows=[{
+            "id": claim_id,
+            "source_document_ids": [doc_id],
+            "extraction_confidence": 0.90,
+        }],
+    )
+
+    counters = await write_fact_versions(entity_id=str(entity_id), pool=pool)
+    assert counters["versions_written"] == 1
+
+    insert_args = [
+        args for sql, args in pool.executed
+        if "INSERT INTO FACT_VERSIONS" in " ".join(sql.split()).upper()
+    ]
+    assert len(insert_args) == 1
+    # claim_ids is the 7th positional arg (0-indexed: $7 in the query = index 6)
+    claim_ids_arg = insert_args[0][6]
+    assert claim_id in claim_ids_arg
 
 
 # ──────────────────────────────────────────────────────────────────────────────

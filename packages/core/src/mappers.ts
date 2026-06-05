@@ -30,10 +30,12 @@ export function mapEntity(
     type: row.type_id as Entity['type'],
     displayName: row.canonical_name,
     aliases: aliases.map((a) => a.alias),
+    // The contract's ExternalId is { system, id } only — entity_external_ids.url is real
+    // provenance but is NOT part of the public contract, so it is deliberately not emitted.
+    // Adding it here would be hand-massaged divergence from the TypeSpec source of truth.
     externalIds: externalIds.map((e) => ({
       system: e.namespace,
       id: e.external_id,
-      ...(e.url ? { url: e.url } : {}),
     })),
     importance: Number(row.importance_score),
     firstSeen: iso(row.first_seen_at),

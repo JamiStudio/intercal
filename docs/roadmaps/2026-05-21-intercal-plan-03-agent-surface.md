@@ -108,18 +108,34 @@ Implementation tasks:
 - [x] EntitiesTable types completed — `deprecated_at` and `deprecation_reason` added to match schema.
 - [x] Alias lookup hardened — is_deprecated=false guard on the entity join.
 - [x] getDelta / verifyClaim left as honest `NotImplementedError("Plan 03 …")` seams.
+- [x] Contract-alignment fix (audit pass 2) — `mapEntity` no longer emits an off-contract
+      `externalIds[].url`. The TypeSpec `ExternalId` is exactly `{ system, id }`; the DB row's
+      `url` is real provenance but not part of the public contract, and a conditional-spread had
+      been smuggling it past TS excess-property checking into both REST and MCP responses.
+      Removed; regression-guarded by a new `mapEntity` test.
 
 Exit criteria:
 
 - [x] Query services return contract-valid results against live Plan 02 production data.
 - [x] `pnpm lint` passes (biome.json schema version info is pre-existing drift, not a code error).
 - [x] `pnpm typecheck` passes (all 6 packages).
-- [x] `pnpm test` passes (10 tests in @intercal/core including 7 new mapRelationship assertions).
+- [x] `pnpm test` passes (12 tests in @intercal/core: 10 mapClaim/mapRelationship + 2 new
+      mapEntity contract-alignment assertions).
 - [x] `pnpm build` passes (all packages including Next.js dashboard).
+- [x] `pnpm contracts:check` passes — no drift; W1 did not modify the contract.
+- [x] Consumer parity confirmed — REST (`packages/api/src/app.ts`) and MCP
+      (`packages/mcp-server/src/server.ts`) both dispatch straight into the same `@intercal/core`
+      query functions. One set of semantics, zero duplicated query logic.
+- [x] `resolveIfMerged` verified on a throwaway Neon fork (deleted after): simple merge → survivor,
+      multi-hop chain → final survivor, self-cycle and self-merge → `NotFoundError` with
+      `mergedIntoId`, unknown UUID → `NotFoundError`. Every id-accepting read path (`getEntity`,
+      `getFreshness`) routes through `findEntityRow` → `resolveIfMerged`.
 - [x] Live API verification: `GET /api/v1/entity?name_or_id=rust` returns correct EntityResponse
       with real claims; `GET /api/v1/evidence?query=rust` returns real hits from production Neon;
       `GET /api/v1/freshness?topic_or_entity=rust` and `/api/v1/sources?entity_or_claim_id=...`
-      return correct data; `GET /api/v1/delta` returns HTTP 501 as expected.
+      return correct data. Error taxonomy verified: `GET /api/v1/delta` with a bare date →
+      400 `invalid_request` (contract `since_date` is `date-time`); with a full RFC3339 timestamp →
+      501 `not_implemented`. Validation precedes deferral, as designed.
 
 Suggested verification:
 

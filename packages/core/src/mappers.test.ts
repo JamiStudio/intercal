@@ -1,6 +1,12 @@
 import { describe, expect, it } from 'vitest';
-import type { ClaimsTable, RelationshipsTable } from './db/types.js';
-import { mapClaim, mapRelationship } from './mappers.js';
+import type {
+  ClaimsTable,
+  EntitiesTable,
+  EntityAliasesTable,
+  EntityExternalIdsTable,
+  RelationshipsTable,
+} from './db/types.js';
+import { mapClaim, mapEntity, mapRelationship } from './mappers.js';
 
 /**
  * Regression guard for the Plan-00 scaffold bug: the claims SQL schema
@@ -114,5 +120,66 @@ describe('mapRelationship', () => {
   it('maps recordedAt from recorded_at', () => {
     const rel = mapRelationship(base);
     expect(rel.recordedAt).toBe('2026-06-01T00:00:00.000Z');
+  });
+});
+
+/**
+ * Contract-alignment guard for mapEntity.externalIds.
+ *
+ * The TypeSpec contract's ExternalId is exactly { system, id }. The DB table
+ * entity_external_ids also carries a `url`, but it is NOT part of the public
+ * contract. The mapper must not emit `url` (or any other off-contract field),
+ * or REST/MCP responses would diverge from the generated OpenAPI/JSON-Schema.
+ */
+describe('mapEntity', () => {
+  const entityRow: EntitiesTable = {
+    id: 'eeeeeeee-eeee-eeee-eeee-eeeeeeeeeeee',
+    type_id: 'organization',
+    canonical_name: 'OpenAI',
+    description: null,
+    current_state: {},
+    importance_score: '0.75',
+    first_seen_at: new Date('2026-05-01T00:00:00.000Z'),
+    last_updated_at: new Date('2026-06-01T00:00:00.000Z'),
+    is_deprecated: false,
+    merged_into_id: null,
+    deprecated_at: null,
+    deprecation_reason: null,
+  };
+
+  const aliases: EntityAliasesTable[] = [
+    {
+      id: 'a0000000-0000-0000-0000-000000000001',
+      entity_id: entityRow.id,
+      alias: 'Open AI',
+      alias_type: 'name',
+      language: 'en',
+      is_primary: false,
+    },
+  ];
+
+  const externalIds: EntityExternalIdsTable[] = [
+    {
+      id: 'x0000000-0000-0000-0000-000000000001',
+      entity_id: entityRow.id,
+      namespace: 'wikidata',
+      external_id: 'Q21708200',
+      // Present in the DB row but must NOT appear in the contract output.
+      url: 'https://www.wikidata.org/wiki/Q21708200',
+    },
+  ];
+
+  it('emits externalIds as exactly { system, id } — no off-contract url', () => {
+    const entity = mapEntity(entityRow, aliases, externalIds);
+    expect(entity.externalIds).toEqual([{ system: 'wikidata', id: 'Q21708200' }]);
+    expect(Object.keys(entity.externalIds?.[0] ?? {})).toEqual(['system', 'id']);
+  });
+
+  it('maps core fields and aliases', () => {
+    const entity = mapEntity(entityRow, aliases, externalIds);
+    expect(entity.id).toBe(entityRow.id);
+    expect(entity.displayName).toBe('OpenAI');
+    expect(entity.aliases).toEqual(['Open AI']);
+    expect(entity.importance).toBeCloseTo(0.75);
   });
 });

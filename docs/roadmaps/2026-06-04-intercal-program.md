@@ -1,7 +1,7 @@
 # Intercal Program — End-to-End Build
 
 Date: 2026-06-04
-Status: [~] Active — Phase A complete and live; Phases B–F sequenced
+Status: [~] Active — Phases A–B complete and live (real data on live API); Phases C–F sequenced
 Owner: Program orchestration
 Source: `docs/research/2026-05-21-intercal-foundation-report.md`, `docs/research/2026-06-04-intercal-revisit-audit-and-dev-environment.md`, decisions `0001`/`0002`
 
@@ -38,7 +38,7 @@ direct, Vercel app, GCloud workers) as each phase begins.
 
 ```
 A ✅ Foundation & live rails
-      └─> B  Real knowledge in (pipeline + worker CD)
+      └─> B ✅ Real knowledge in (pipeline live; worker CD = Plan 07 W3/W4 pending)
               └─> C  Agent surface depth (deltas, verify, digests, MCP on /api/mcp)
                       ├─> D  Trust & operations (auth, limits, policy, subs, audit, deploy/CD)
                       │        └─> E  Interactive experience (graph/timeline/briefing/operator)
@@ -50,8 +50,10 @@ A ✅ Foundation & live rails
 Plan 00 + live wiring. Repo, contracts, schema, adapters, query layer, deployed app, live DB.
 **Done:** the substrate is online and the seams are real.
 
-### Phase B — Real knowledge in
-Plans: **02 (Knowledge Pipeline)** + the worker CD portion of **07**.
+### Phase B — Real knowledge in ✅ PIPELINE COMPLETE (worker CD pending in Plan 07 W3/W4)
+Plans: **02 (Knowledge Pipeline)** ✅ all 8 workstreams + claim-entity-linking bridge live & idempotent;
+real data (Node/Rust/K8s GitHub releases → claims → entities → relationships → bitemporal fact versions)
+served on the live API (`/v1/entity`, `/v1/evidence`). Worker CD (scheduled Actions + Cloud Run) = Plan 07 W3/W4.
 Goal: documents flow through ingest → normalize → extract claims → resolve entities → derive
 relationships → write bitemporal fact versions → embeddings, idempotently, on real sources.
 Key deliverables:

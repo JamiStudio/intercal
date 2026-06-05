@@ -541,8 +541,15 @@ async def test_run_pipeline_drains_resolve_and_link_batches() -> None:
     Regression guard: a real run produces far more mentions/claims than one
     batch.  If the orchestrator called resolve/link only once, most mentions
     would stay unresolved and the *next* whole-pipeline run would resolve them
-    into new entities (non-idempotent).  The loop must iterate until a pass
-    loads no unresolved mentions (resolve) / makes no progress (link).
+    into new entities (non-idempotent).
+
+    - Resolve drains until a pass loads no unresolved mentions (every loaded
+      mention is consumed, so an empty load is the true end).
+    - Link *pages* with an advancing offset (unlinkable claims keep NULL ends
+      and would re-load forever under a bare LIMIT; stopping on no-progress
+      would instead skip linkable claims sorted behind a full batch of
+      unlinkable ones).  It advances the offset past the claims that *stayed*
+      unlinked each batch and stops on the first partial (< batch_size) batch.
     """
     pool = _FakePool(doc_ids=[_DOC_ID], entity_ids=[_ENTITY_ID], claim_ids=[_CLAIM_ID])
 
@@ -570,10 +577,17 @@ async def test_run_pipeline_drains_resolve_and_link_batches() -> None:
             "mentions_resolved": 0,
         },
     ]
-    # link: 1 batch with progress, then a no-progress batch → 2 calls, loop ends.
+    # link: page through with offset.  batch_size=10.
+    #   batch 1 @offset 0: loads 10, links 7 → 3 stay unlinked → next offset 3
+    #   batch 2 @offset 3: loads 10, links 0 → 10 stay unlinked → next offset 13
+    #   batch 3 @offset 13: loads 4 (< batch_size) → end reached, stop
+    # Stopping on no-progress (old contract) would have ended after batch 2 and
+    # missed the linkable claims in batch 3 — the bug this guards against.
+    _link_batch = 10
     link_side_effect = [
-        {"claims_loaded": 50, "claims_updated": 20},
-        {"claims_loaded": 30, "claims_updated": 0},  # no progress → stop
+        {"claims_loaded": 10, "claims_updated": 7},
+        {"claims_loaded": 10, "claims_updated": 0},
+        {"claims_loaded": 4, "claims_updated": 2},  # partial batch → end
     ]
 
     with (
@@ -634,6 +648,7 @@ async def test_run_pipeline_drains_resolve_and_link_batches() -> None:
             storage=_make_fake_storage(),
             llm=_make_fake_llm(),
             embeddings=_make_fake_embeddings(),
+            link_batch_size=_link_batch,
         )
 
     # resolve drained over 3 calls; counters accumulated across batches.
@@ -641,9 +656,14 @@ async def test_run_pipeline_drains_resolve_and_link_batches() -> None:
     assert health.entities_created == 17  # 10 + 7
     assert health.entities_merged == 1
     assert health.review_candidates == 6  # 4 + 2
-    # link drained over 2 calls (stopped on no-progress batch).
-    assert mock_link.call_count == 2
-    assert health.claims_linked == 20
+    # link paged over 3 calls (did NOT stop on the no-progress batch 2) and
+    # accumulated links from the final partial batch.
+    assert mock_link.call_count == 3
+    assert health.claims_linked == 9  # 7 + 0 + 2
+    # Offsets advanced past the claims that stayed unlinked each batch:
+    #   batch1 offset=0, batch2 offset=3 (10-7), batch3 offset=13 (3 + 10-0)
+    link_offsets = [c.kwargs["offset"] for c in mock_link.call_args_list]
+    assert link_offsets == [0, 3, 13]
 
 
 @pytest.mark.asyncio

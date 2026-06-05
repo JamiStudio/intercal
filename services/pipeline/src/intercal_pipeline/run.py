@@ -419,22 +419,35 @@ async def run_pipeline(
         health.errors_resolve += 1
 
     # ── Stage 6: Link claim entities ──────────────────────────────────────────
-    # Same draining contract: ``link_claim_entities`` processes one batch of
-    # claims-with-a-NULL-end per call.  Some ends are legitimately unlinkable
-    # (conservative: left NULL), so we terminate on *no progress*
-    # (``claims_updated == 0``) rather than on an empty load, which guarantees
-    # termination even when unlinkable claims remain in the candidate set.
+    # Draining contract: ``link_claim_entities`` processes one stable-ordered
+    # batch of claims-with-a-NULL-end per call.  Unlike resolve (every loaded
+    # mention is consumed), some claim ends are *legitimately unlinkable*
+    # (conservative: left NULL) — they keep their NULL ends and would re-load
+    # forever under a bare ``LIMIT``.  Terminating on ``claims_updated == 0``
+    # would instead stop early whenever a full batch of unlinkable claims sorts
+    # ahead of linkable ones, leaving linkable claims for a *later* run (an
+    # idempotency break at scale).  Both failure modes are avoided by paging:
+    # advance the offset past the claims that *stayed* unlinked in each batch
+    # (``claims_loaded - claims_updated``) — linked claims drop out of the
+    # WHERE set so they don't shift the cursor — and stop when a batch loads
+    # fewer than ``batch_size`` rows (end of the set reached) or loads nothing.
     try:
+        link_offset = 0
         for _ in range(_MAX_DRAIN_ITERATIONS):
             link_counters = await link_claim_entities(
                 pool=pool,
                 embeddings=embeddings if use_embeddings_for_link else None,
                 batch_size=link_batch_size,
+                offset=link_offset,
             )
+            loaded = link_counters.get("claims_loaded", 0)
             updated = link_counters.get("claims_updated", 0)
             health.claims_linked += updated
             _log.info("pipeline stage=link_claim_entities %s", link_counters)
-            if link_counters.get("claims_loaded", 0) == 0 or updated == 0:
+            # Step the cursor past the claims that remained unlinked (still in
+            # the set); linked claims left the set and shifted positions left.
+            link_offset += loaded - updated
+            if loaded == 0 or loaded < link_batch_size:
                 break
         else:
             _log.warning(

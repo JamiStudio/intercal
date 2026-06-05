@@ -33,8 +33,13 @@ Plan 03; `dispatch_subscriptions`, Plan 04) is explicitly not invoked here.
 
 Idempotence/resumability is a composition property: each stage is individually idempotent, the
 orchestrator skips extraction for already-extracted documents (LLM output is non-deterministic),
-and it **drains** the batch-oriented resolve/link stages (looping until no pending mentions/claims
-remain) so a re-run produces no duplicate canonical records. Per-document stage failures are
+and it **drains** the batch-oriented resolve/link stages so a re-run produces no duplicate
+canonical records. Resolve drains by re-loading until a pass returns no unresolved mentions (every
+loaded mention is consumed). Link **pages** with an advancing offset: unlinkable claim ends are
+left NULL by design, so they would re-load forever under a bare `LIMIT`, and stopping on
+no-progress would skip linkable claims sorted behind a full batch of unlinkable ones — paging
+advances past the claims that stayed unlinked each batch and stops on the first partial batch,
+visiting every NULL-end claim exactly once. Per-document stage failures are
 non-fatal (logged + counted); a fatal ingest failure ends the run as `failed`. CLI:
 `intercal-pipeline run --source-id <uuid>` / `run-all` (`python -m intercal_pipeline <cmd>`).
 

@@ -1103,6 +1103,27 @@ Audit of the prior uncommitted W8 WIP (why earlier attempts failed, and the fixe
   `person_authored_artifact` keyword set — a semantic match to the seeded type
   ("authored or co-authored a technical artifact"), not a fabricated mapping.
 
+Second-pass audit (2026-06-05) — one latent correctness fix:
+
+- **Link drain could terminate early at scale (paging fix).** The link drain
+  stopped on no-progress (`claims_updated == 0`). Unlinkable claim ends are left
+  NULL by design and re-load in the same stable-ordered position every batch, so a
+  full batch of unlinkable claims sorted ahead of linkable ones would end the drain
+  before reaching the linkable claims — leaving them for a *later* whole-pipeline
+  run (a re-run would then create *new* relationships: an idempotency break at
+  scale). It did not bite at current production scale (114 claims < the 200 batch,
+  so the whole set fits one batch), but it is a real defect. Fixed by paging:
+  `link_claim_entities` gained an `offset` parameter (stable order extended to
+  `…, id`), and the orchestrator advances the offset past the claims that *stayed*
+  unlinked each batch (`claims_loaded - claims_updated`) and stops on the first
+  partial batch — visiting every NULL-end claim exactly once. Resolve was already
+  correct (it self-consumes its load set, so an empty load is the true end).
+  Proven on a real Neon fork: with `batch_size=5` the drain paged the full 102-claim
+  NULL-end set across 21 iterations (offsets 0→100, last page partial), terminated,
+  and produced zero new links (idempotent). Full-pipeline re-run on the fork held
+  155/6/155 entities/relationships/fact-versions. 373 tests pass (the existing drain
+  regression test was rewritten to assert the paging contract, incl. exact offsets).
+
 Exit criteria:
 
 - [x] Full pipeline runs from source document to fact version twice without

@@ -1671,6 +1671,7 @@ async def link_claim_entities(
     pool: Any,
     embeddings: Any | None = None,
     batch_size: int = 200,
+    offset: int = 0,
     min_confidence: float | None = None,
 ) -> dict[str, int]:
     """Link claim subject/object surface text to resolved canonical entities.
@@ -1720,6 +1721,12 @@ async def link_claim_entities(
         embeddings: Optional EmbeddingsPort adapter for similarity-based linking.
             When ``None``, only exact-mention and lexical/alias methods run.
         batch_size: Maximum number of claims to process per call.
+        offset: Row offset into the stable-ordered unlinked-claim set.  Lets a
+            caller page through *every* unlinkable claim exactly once per drain
+            (unlinkable claims keep their NULL ends, so a bare ``LIMIT`` without
+            an advancing offset would re-load the same prefix forever).  Ordering
+            is stable (``extraction_confidence DESC, created_at, id``) so paging
+            is deterministic within a run.
         min_confidence: Minimum confidence to write a link (default: uses
             ``LINK_EMBEDDING_MIN_CONFIDENCE`` as the floor for embedding links;
             exact matches always write).
@@ -1730,8 +1737,9 @@ async def link_claim_entities(
         ``subject_skipped``, ``object_skipped``, ``claims_updated``.
     """
     _log.info(
-        "link_claim_entities: batch_size=%d embeddings=%s",
+        "link_claim_entities: batch_size=%d offset=%d embeddings=%s",
         batch_size,
+        offset,
         embeddings is not None,
     )
 
@@ -1754,10 +1762,11 @@ async def link_claim_entities(
         FROM claims
         WHERE status = 'active'
           AND (subject_entity_id IS NULL OR object_entity_id IS NULL)
-        ORDER BY extraction_confidence DESC, created_at
-        LIMIT $1
+        ORDER BY extraction_confidence DESC, created_at, id
+        LIMIT $1 OFFSET $2
         """,
         batch_size,
+        offset,
     )
 
     counters["claims_loaded"] = len(claims)

@@ -68,8 +68,9 @@ async def build_digest(
         "build_digest: id=%s since=%s budget=%d", topic_or_entity_id, since_date, token_budget
     )
     raise NotImplementedError(
-        "Plan 02 — build_digest: evidence assembly from fact_versions/claims, "
-        "LLM synthesis prompt, token budgeting, and digest cache not yet implemented."
+        "Plan 03 — build_digest: evidence assembly from fact_versions/claims, "
+        "LLM synthesis prompt, token budgeting, and digest cache deferred to Plan 03 "
+        "(agent-facing surface)."
     )
 
 
@@ -106,7 +107,8 @@ async def recompute_freshness(
     """
     _log.info("recompute_freshness: id=%s", topic_or_entity_id)
     raise NotImplementedError(
-        "Plan 02 — recompute_freshness: freshness formula and DB column not yet implemented."
+        "Plan 03 — recompute_freshness: freshness formula and topics.freshness_score column "
+        "deferred to Plan 03 (agent-facing surface)."
     )
 
 
@@ -148,6 +150,6 @@ async def notify_subscribers(
     """
     _log.info("notify_subscribers: id=%s", entity_or_topic_id)
     raise NotImplementedError(
-        "Plan 02 — notify_subscribers: subscription matching, outbox deduplication, "
-        "and webhook/polling dispatch not yet implemented."
+        "Plan 04 — notify_subscribers: subscription matching, outbox deduplication, "
+        "and webhook/polling dispatch deferred to Plan 04 (trust & operations)."
     )

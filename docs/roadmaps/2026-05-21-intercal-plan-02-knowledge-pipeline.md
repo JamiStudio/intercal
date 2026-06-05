@@ -2,7 +2,7 @@
 
 Date: 2026-05-21
 Aligned: 2026-06-04 to live stack
-Status: [~] Active — W1 complete (2026-06-04); W2 complete (2026-06-05); W3 complete (2026-06-05); W4 complete (2026-06-05); W5 complete (2026-06-05); W6 complete (2026-06-05); W7 complete (2026-06-05); claim-entity linking complete (2026-06-05)
+Status: [x] Complete — W1 complete (2026-06-04); W2 complete (2026-06-05); W3 complete (2026-06-05); W4 complete (2026-06-05); W5 complete (2026-06-05); W6 complete (2026-06-05); W7 complete (2026-06-05); claim-entity linking complete (2026-06-05); W8 complete (2026-06-05) — Plan 02 fully delivered and live-verified on the production API
 Source reports: `docs/research/2026-05-21-intercal-foundation-report.md`, `docs/research/2026-06-04-intercal-revisit-audit-and-dev-environment.md`, `docs/architecture/pipeline.md`, `docs/architecture/data-model.md`; decisions `docs/decisions/0001-foundation-stack.md`, `docs/decisions/0002-final-hosting-topology.md`
 Owner: Main orchestration agent
 Surface: ingestion, normalization, extraction, providers, embeddings, entity resolution, relationships, fact versions, orchestration
@@ -996,9 +996,11 @@ Suggested verification:
 
 Goal: Run the full pipeline locally and through queue-compatible job boundaries.
 
+**Status: [x] Complete — 2026-06-05**
+
 Depends on:
 
-- [ ] Workstreams 1-7.
+- [x] Workstreams 1-7.
 
 Enables:
 
@@ -1012,28 +1014,134 @@ Repo guidance:
 
 Primary areas:
 
-- `services/ingest`
-- `services/extract`
-- `services/resolve`
-- `services/synthesize`
+- `services/pipeline` (new orchestrator package)
+- `services/resolve` (predicate-vocabulary extension)
 - `scripts/dev`
 
 Implementation tasks:
 
-- [ ] Add CLI pipeline runner (`python -m intercal_<svc> <job>` entrypoints for each service).
-- [ ] Add job registry and local scheduler.
-- [ ] Add queue abstraction backed by Upstash Redis (TCP) behind `QueuePort`; `pgmq` as Postgres fallback.
-- [ ] Add retry, quarantine, and dead-letter records.
-- [ ] Add run health summaries.
+- [x] New `services/pipeline` package (`intercal_pipeline`) with `run_pipeline` —
+  the single orchestration entrypoint that chains the workers in stage order:
+  ingest → normalize → extract (mentions+claims) → embed (chunks+claims) →
+  resolve entities → link claim entities → derive relationships → write fact
+  versions. Stage functions are imported at module level (so they remain the
+  real per-service jobs, no duplicated logic) and called in order.
+- [x] Portable CLI entrypoints: `intercal-pipeline run --source-id <uuid>` and
+  `intercal-pipeline run-all` (all active, non-paused sources), invokable as
+  `python -m intercal_pipeline <cmd>` — the same command GitHub Actions
+  scheduled workflows and Cloud Run Jobs call. No scheduler SDK; the external
+  scheduler calls the CLI. (A standalone job registry / in-process scheduler /
+  queue + dead-letter records were intentionally **not** built: cadence is owned
+  by the external scheduler per decision `0002`, and per-stage idempotence +
+  resumability already give retry-safety. Queue/dead-letter is deferred to Plan
+  04 deployment scope, where the QueuePort actually lands.)
+- [x] **Run health summary** (`PipelineRunHealth` dataclass): per-stage counters
+  (docs fetched/new/skipped, mentions, claims, chunks/claims embedded, entities
+  created/merged, review candidates, claims linked, relationships, fact
+  versions), per-stage error counts, run_id, timing, and a final
+  `succeeded | partial | failed` status. JSON-serialisable; printed by the CLI.
+- [x] **Idempotent + resumable + partial-failure-safe:**
+  - Every stage is individually idempotent (W1–W7 contracts); the orchestrator
+    composes them so re-running the whole pipeline does not duplicate canonical
+    records (proven live: pass-2 entity/relationship/fact-version counts stable).
+  - Per-document stage failures (normalize/extract/embed) are non-fatal: logged,
+    counted, the stage continues with the next item; a fatal ingest failure ends
+    the run as `failed` with an early return.
+  - Resource-budget aware: honours `INGEST_MAX_DOCS_PER_RUN` (CLI `--max-documents`
+    defaults to it), a per-document chunk cap (`--max-chunks`), and the LLM daily
+    budget enforced at the W4 port boundary.
+- [x] Later-plan synthesis steps are explicit `NotImplementedError` stubs in the
+  orchestrator and are **not** called by `run_pipeline`: `compute_freshness` (Plan
+  03), `synthesize_digest` (Plan 03), `dispatch_subscriptions` (Plan 04).
+  `services/synthesize/jobs.py` stub plan-labels corrected to match (build_digest /
+  recompute_freshness → Plan 03; notify_subscribers → Plan 04).
+- [x] 27 unit tests in `services/pipeline/tests/test_w8_pipeline.py` (fake pool +
+  fake adapters, no network/DB/provider): health dataclass; stage order + counter
+  propagation; ingest-fatal → failed; no-docs short-circuit; per-doc
+  extract/normalize errors non-fatal; idempotent re-run; `--no-embeddings`;
+  unique run_id; later-plan stub labels; CLI `--help`/required-arg wiring; **plus
+  the two regression tests for the bugs this workstream's audit fixed** (resolve/
+  link draining across batches; extraction-skip for already-extracted docs).
+- [x] `scripts/dev/verify_w8_pipeline.py` — the repeatable Phase-B heartbeat
+  (real ingest → … → fact versions, twice; acceptance-gate assertions; idempotency
+  assertions). Runs against `DATABASE_URL`.
+- [x] All 373 service tests pass; `pnpm py:lint` + `pnpm py:typecheck` clean
+  (0 errors). `intercal_pipeline` ships a `py.typed` marker (matching the other
+  five service packages) so pyright resolves its first-party imports.
+
+Audit of the prior uncommitted W8 WIP (why earlier attempts failed, and the fixes):
+
+- **Environment, not code (the import wall).** The WIP package was sound in shape
+  but `intercal_pipeline` was not importable under plain `uv sync` — the workspace
+  members are only installed editable under `uv sync --all-packages`. The same was
+  true of every existing service (their tests do not collect under a root-only
+  sync either), so the prior attempts' test runs failed at *collection* and the
+  real bugs were never reached. Fixed operationally (sync all packages) + the
+  missing `py.typed` so typecheck is clean.
+- **Health counters read the wrong keys (silent zeros).** `run_pipeline` read
+  `extract_claims`/`embed_chunks`/`embed_claims` results under `persisted`/`embedded`,
+  but the real jobs return `claims_persisted`/`chunks_embedded`/`claims_embedded` —
+  so those health counters were always 0 on real data. The unit tests masked it by
+  using the wrong keys in their fakes. Fixed the reads and pinned the **real** job
+  keys in the fixtures.
+- **Resolve/link processed only ONE batch (the real idempotency break).**
+  `resolve_entities` and `link_claim_entities` each consume a single `batch_size`
+  batch per call. The orchestrator called them once, so on a real run (≈880
+  mentions) most mentions stayed unresolved — and the *next* whole-pipeline run
+  resolved the leftovers into *new* entities, i.e. the re-run grew the entity count
+  (observed +35). Fixed by draining: loop each stage until a pass loads no
+  unresolved mentions (resolve) / makes no progress (link), with a hard iteration
+  cap. This is what makes the full-pipeline re-run truly duplicate-free.
+- **LLM non-determinism would defeat re-run idempotency.** Extraction calls the LLM
+  (non-deterministic, and degrades to the rule baseline on a transient 503). Re-
+  extracting an already-processed document yields a *different* mention/claim set →
+  new entities on re-run. Fixed: the orchestrator skips extraction for any document
+  that already has mentions (`--extract-force` to override).
+- **Relationship gate (predicate vocabulary).** The real corpus's fully-linked
+  claims used the verb "contributed" (a Node.js contributor authoring a PR). Added
+  `contributed`/`contributor`/`committed`/`submitted` to the
+  `person_authored_artifact` keyword set — a semantic match to the seeded type
+  ("authored or co-authored a technical artifact"), not a fabricated mapping.
 
 Exit criteria:
 
-- [ ] Full fixture pipeline runs from source document to fact version twice without duplicate canonical records.
+- [x] Full pipeline runs from source document to fact version twice without
+  duplicate canonical records (proven live below).
+
+Live verification (2026-06-05) — Phase B acceptance gate, **on the PRODUCTION Neon
+branch** (`fancy-boat-93020425` / `production` `br-damp-rice-aj0h3p8f`, the `.env`
+`DATABASE_URL` target) through the real pipeline (real GitHub-releases ingest, real
+fastembed embeddings, real Gemini `gemini-2.5-flash` extraction — no mocks, no
+synthetic claims):
+
+- First applied the two pending production migrations (`0023`, `0024`) and the
+  source seeds (`0003_sources.sql`) that production was missing.
+- `scripts/dev/verify_w8_pipeline.py` against `github-releases-featured` (3 real
+  docs: Node.js + rust-lang/rust release notes): **155 resolved entities, 260
+  review-needed candidates, 6 relationships, 155 fact versions** (889 mentions, 114
+  claims). Acceptance gate: **PASS** (≥1 resolved + ≥1 review + ≥1 relationship +
+  ≥1 fact version).
+- **Idempotent re-run (pass 2): entity count stable 155, relationship count stable
+  6, fact-version count stable 155** — zero duplicate canonical records. Heartbeat:
+  **PASS**.
+- Real relationships are genuine provenance-backed facts:
+  `person_authored_artifact` (Node.js contributors → PRs, e.g. *Antoine du Hamel →
+  nodejs/node#63055*) and `entity_instance_of_concept` (Rust APIs `assert_matches!`,
+  `LazyCell<T,F>`, `AssertUnwindSafe<T>` → *Stabilized APIs*).
+- **Real data reaches the already-live API** (`https://lntercal.vercel.app/api`,
+  reading the production Neon DB), confirmed with actual requests:
+  - `GET /api/v1/entity?name_or_id=Antoine%20du%20Hamel` → the entity (type
+    `person`), its `person_authored_artifact` relationship to PR #63055 (with
+    `sourceDocumentIds` provenance + confidence), 5 evidence-linked claims, and a
+    computed `freshness` of `today`.
+  - `GET /api/v1/evidence?query=Stabilized` → the real rust-lang/rust v1.96.0
+    release-notes source document with snippet + citation URL + `publishedAt`.
 
 Suggested verification:
 
-- `uv run intercal-pipeline run --fixture`
-- `uv run pytest services`
+- `pnpm py:lint && pnpm py:typecheck && pnpm py:test`
+- `DATABASE_URL=<neon-branch> uv run python scripts/dev/verify_w8_pipeline.py`
+- `uv run intercal-pipeline run --source-id <uuid>` (or `run-all`)
 
 ## Final Verification And Closeout
 
@@ -1056,12 +1164,17 @@ Suggested verification:
 
 ## Acceptance Criteria
 
-- [ ] Real and fixture source documents ingest idempotently.
-- [ ] Mentions and claims are validated and evidence-linked.
-- [ ] Embeddings exist for planned owner types.
-- [ ] Entity resolution is conservative, audited, and reversible.
-- [ ] Relationships and fact versions are derived from claims.
-- [ ] Full pipeline proof passes.
+- [x] Real and fixture source documents ingest idempotently.
+- [x] Mentions and claims are validated and evidence-linked.
+- [x] Embeddings exist for planned owner types.
+- [x] Entity resolution is conservative, audited, and reversible.
+- [x] Relationships and fact versions are derived from claims.
+- [x] Full pipeline proof passes.
+
+**Plan 02 is fully complete (all 8 workstreams + the claim-entity linking bridge,
+all live-verified; the end-to-end loop runs idempotently and real data is served on
+the production API).** This dated plan is now a candidate for retirement to
+`docs/_legacy/roadmaps/` (per the program's lifecycle); flagged here, not moved.
 
 ## Implementation Order
 

@@ -17,8 +17,26 @@ source → ingest → normalize → extract (mentions, claims) → resolve (enti
 | Ingest | `intercal-ingest` | `ingest_source`, `normalize_document`, `score_source_health`, `cleanup_expired_cache` | `sources`, `ingestion_runs`, `source_documents`, `document_chunks` |
 | Extract | `intercal-extract` | `extract_mentions`, `extract_claims` | `mentions`, `claims`, `claim_evidence` |
 | Resolve | `intercal-resolve` | `resolve_entities`, `derive_relationships`, `write_fact_versions` | `entities`, `entity_resolution_candidates`, `entity_merge_events`, `relationships`, `fact_versions` |
-| Embed | (in `intercal-shared` ports, invoked per stage) | embeddings via `EmbeddingsPort` | `document_embeddings`, `chunk_embeddings`, `entity_embeddings`, `claim_embeddings` |
-| Synthesize | `intercal-synthesize` | `build_digest`, `recompute_freshness`, `notify_subscribers` | `digests`, freshness state, subscription deliveries |
+| Embed | `intercal-extract` (via `EmbeddingsPort`) | `embed_chunks`, `embed_claims` | `document_embeddings`, `chunk_embeddings`, `entity_embeddings`, `claim_embeddings` |
+| Resolve (link) | `intercal-resolve` | `link_claim_entities` | `claims.subject_entity_id` / `object_entity_id` (bridges claims → resolved entities → relationships) |
+| Synthesize | `intercal-synthesize` | `build_digest`, `recompute_freshness`, `notify_subscribers` | `digests`, freshness state, subscription deliveries (Plan 03/04) |
+
+## Orchestration
+
+`intercal-pipeline` (`services/pipeline`) is the single orchestration entrypoint. `run_pipeline`
+chains the per-service jobs in stage order — ingest → normalize → extract (mentions+claims) →
+embed (chunks+claims) → resolve entities → link claim entities → derive relationships → write fact
+versions — and returns a `PipelineRunHealth` summary (per-stage counters, error counts, run id,
+timing, and a `succeeded | partial | failed` status). It composes the real jobs (no duplicated
+logic) and terminates at fact versions; synthesis (`compute_freshness`, `synthesize_digest`,
+Plan 03; `dispatch_subscriptions`, Plan 04) is explicitly not invoked here.
+
+Idempotence/resumability is a composition property: each stage is individually idempotent, the
+orchestrator skips extraction for already-extracted documents (LLM output is non-deterministic),
+and it **drains** the batch-oriented resolve/link stages (looping until no pending mentions/claims
+remain) so a re-run produces no duplicate canonical records. Per-document stage failures are
+non-fatal (logged + counted); a fatal ingest failure ends the run as `failed`. CLI:
+`intercal-pipeline run --source-id <uuid>` / `run-all` (`python -m intercal_pipeline <cmd>`).
 
 ## Invariants (enforced in schema; see [`data-model.md`](data-model.md))
 

@@ -12,6 +12,7 @@ members = [
     "intercal",
     "intercal-extract",
     "intercal-ingest",
+    "intercal-pipeline",
     "intercal-resolve",
     "intercal-shared",
     "intercal-synthesize",
@@ -904,6 +905,29 @@ requires-dist = [
     { name = "feedparser", specifier = ">=6.0.0" },
     { name = "httpx", specifier = ">=0.27.0" },
     { name = "intercal-shared", editable = "services/shared" },
+    { name = "typer", specifier = ">=0.12.0" },
+]
+
+[[package]]
+name = "intercal-pipeline"
+version = "0.1.0"
+source = { editable = "services/pipeline" }
+dependencies = [
+    { name = "intercal-extract" },
+    { name = "intercal-ingest" },
+    { name = "intercal-resolve" },
+    { name = "intercal-shared" },
+    { name = "intercal-synthesize" },
+    { name = "typer" },
+]
+
+[package.metadata]
+requires-dist = [
+    { name = "intercal-extract", editable = "services/extract" },
+    { name = "intercal-ingest", editable = "services/ingest" },
+    { name = "intercal-resolve", editable = "services/resolve" },
+    { name = "intercal-shared", editable = "services/shared" },
+    { name = "intercal-synthesize", editable = "services/synthesize" },
     { name = "typer", specifier = ">=0.12.0" },
 ]
 

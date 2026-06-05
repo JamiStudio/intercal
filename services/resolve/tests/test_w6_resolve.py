@@ -785,6 +785,8 @@ def testmap_predicate_to_type_known_predicates() -> None:
     assert map_predicate_to_type("employs") == "organization_employs_person"
     assert map_predicate_to_type("published") == "organization_published_artifact"
     assert map_predicate_to_type("authored") == "person_authored_artifact"
+    assert map_predicate_to_type("contributed") == "person_authored_artifact"
+    assert map_predicate_to_type("committed") == "person_authored_artifact"
     assert map_predicate_to_type("headquartered") == "organization_headquartered_in"
     assert map_predicate_to_type("subsidiary_of") == "organization_subsidiary_of"
     assert map_predicate_to_type("merged") == "company_merged_with_company"

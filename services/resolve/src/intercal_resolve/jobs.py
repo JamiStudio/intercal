@@ -112,8 +112,12 @@ _PREDICATE_TO_TYPE: list[tuple[list[str], str]] = [
     # Organization ↔ artifact (publication)
     (["published", "released", "announced", "organization_published"],
      "organization_published_artifact"),
-    # Person ↔ artifact (authorship)
-    (["authored", "wrote", "co-authored", "created by", "person_authored"],
+    # Person ↔ artifact (authorship). "contributed"/"committed"/"submitted" map
+    # here: a contributor authored/co-authored the artifact (PR, commit, patch) —
+    # the seeded type is "authored or co-authored a technical artifact", so this
+    # is a semantic match, not a fabrication.
+    (["authored", "wrote", "co-authored", "created by", "person_authored",
+      "contributed", "contributor", "committed", "submitted"],
      "person_authored_artifact"),
     # Organization ↔ organization (subsidiary / acquisition / merger)
     (["subsidiary", "subsidiary_of", "division of", "owned by"],

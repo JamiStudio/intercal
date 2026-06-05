@@ -24,7 +24,7 @@ def test_jobs_are_async() -> None:
 
 @pytest.mark.asyncio
 async def test_build_digest_raises_not_implemented() -> None:
-    with pytest.raises(NotImplementedError, match="Plan 02"):
+    with pytest.raises(NotImplementedError, match="Plan 03"):
         await build_digest(
             topic_or_entity_id="test-id",
             since_date="2026-01-01",
@@ -37,13 +37,13 @@ async def test_build_digest_raises_not_implemented() -> None:
 
 @pytest.mark.asyncio
 async def test_recompute_freshness_raises_not_implemented() -> None:
-    with pytest.raises(NotImplementedError, match="Plan 02"):
+    with pytest.raises(NotImplementedError, match="Plan 03"):
         await recompute_freshness(topic_or_entity_id="test-id", pool=None)
 
 
 @pytest.mark.asyncio
 async def test_notify_subscribers_raises_not_implemented() -> None:
-    with pytest.raises(NotImplementedError, match="Plan 02"):
+    with pytest.raises(NotImplementedError, match="Plan 04"):
         await notify_subscribers(entity_or_topic_id="test-id", pool=None, queue=None)
 
 

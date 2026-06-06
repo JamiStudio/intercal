@@ -367,6 +367,14 @@ The first proof consumes the same adapters, provenance rules, and public query p
   API/MCP/SDK quality-gate surfaces, scripts/dev proof/backfill tooling, operations docs, related
   tests, Workstream 4 roadmap status, and changelog. Next coordinator action: poll in short
   intervals, record result, then gate the pass 3 commit.
+- 2026-06-06T14:52:00-04:00 — Workstream 4 pass 3 returned complete. Commit:
+  `27e70d698e345a5a4436f129991194572e68ca35` (`fix(extract): preserve corpus metadata for live
+  proof`), pushed to `origin/main`. Gate result: 6 files and 261 LOC passes the numeric gate, but
+  contents are meaningful extraction metadata and live-proof verifier changes. Live proof remains
+  failing because the configured DB has only `api` and `registry` active sources, all live claims are
+  `unclassified`, and no reviewed first-proof source rows exist for GPT/Claude/Gemini/Llama/MCP
+  coverage. Next coordinator action: dispatch Workstream 4 pass 4 to add/verify first-proof source
+  rows and run bounded backfill/live-proof where possible.
 
 ## Workstream 1: Corpus Scope And Source Taxonomy
 

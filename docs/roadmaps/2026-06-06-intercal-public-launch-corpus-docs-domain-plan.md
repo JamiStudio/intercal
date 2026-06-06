@@ -199,6 +199,11 @@ The first proof consumes the same adapters, provenance rules, and public query p
   source registry, related adapter tests, Workstream 2 roadmap status, and changelog. Next
   coordinator action: poll in short intervals, record result, then gate the quiet-confirmation
   commit.
+- 2026-06-06T12:32:00-04:00 — Workstream 2 pass 3 returned complete. Commit:
+  `2cea5538e8fd180b52c9c0ff33df61c6462f70f3` (`fix(shared): harden historical adapter window
+  checks`), pushed to `origin/main`. Gate result: 4 files and 197 LOC passes the numeric gate, but
+  contents are still meaningful adapter hardening plus regression tests, not a quiet closeout.
+  Next coordinator action: dispatch another fresh-context Workstream 2 pass.
 - 2026-06-06T12:25:16-04:00 — Workstream 2 pass 3 quiet-confirmation audit found one remaining
   adapter-foundation gap and fixed it in scope: arXiv and MediaWiki revision adapters now locally
   enforce historical date windows, suppress undated or identifier-less historical records, cap

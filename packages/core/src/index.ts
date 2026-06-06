@@ -51,6 +51,8 @@ export {
   RateLimitedError,
   UnauthorizedError,
 } from './errors.js';
+export type { ObservabilitySnapshot, ObservabilityTable } from './observability.js';
+export { OBSERVABILITY_VIEW_NAMES, queryObservabilitySnapshot } from './observability.js';
 export type {
   DeltaParams,
   DocumentPolicy,

@@ -475,10 +475,38 @@ Suggested verification:
 
 Goal: Make system health, quality, cost, and freshness visible.
 
+Orchestrator checkpoint (2026-06-06T07:27Z): W6 P1 dispatched as agent
+`019e9be9-960c-7b81-972f-9d212280dda6`. Ownership: real health/quality/cost/freshness metrics via
+scripts/core/db/docs/tests as needed; no W4/W5/W7/W8 work. Next coordinator action: poll to terminal,
+checkpoint result, then dispatch W6 P2.
+
+Status: [x] **Complete** (2026-06-06). Observability now starts from SQL-owned views and a
+Windows-friendly operator CLI rather than dashboard-only cards. Migration `0030_observability.sql`
+adds `provider_usage_events` plus budget allowance rows linked to `docs/operations/resource-budget.md`,
+then exposes `observability_source_health`, `observability_failed_jobs`,
+`observability_pipeline_metrics`, `observability_usage_latency`, `observability_freshness`, and
+`observability_provider_consumption`. The views cover source health, failed ingestion/subscription
+jobs, extraction/document/chunk volume, claim/evidence quality, resolution candidates,
+merge/split events, embedding coverage, digest cache staleness, subscription queue/backoff state,
+API/MCP latency/error/token usage from `usage_events`, and freshness across sources/documents/claims/
+fact versions/digests. Provider usage is explicit and append-only: real Neon/R2/Upstash/Vertex/Gemini/
+GitHub Actions/Vercel/Cloud Run measurements can be imported into `provider_usage_events`; missing
+provider readings surface as `unavailable`, never as fake zero usage. `pnpm ops:health` reads the
+views with `summary`, `sources`, `freshness`, `failures`, `usage`, and `providers` sections plus JSON
+and SQL dry-output modes. Core exports `queryObservabilitySnapshot` for future dashboard/API readers
+without duplicating SQL semantics. Durable doc: `docs/operations/observability.md`; resource-budget
+monitoring now points at the CLI/view path.
+
+Verification (2026-06-06): `pnpm ops:health --help`, `pnpm ops:health --print-sql`,
+`pnpm --filter @intercal/core test -- observability` (114 tests due package filter behavior),
+`pnpm --filter @intercal/core typecheck`, scoped `biome check`, and `git diff --check` passed.
+`pnpm db:check` was not run: process `DATABASE_URL` is unset, Docker is unavailable, and the local
+`.env` target was not treated as a verified throwaway database.
+
 Depends on:
 
-- [ ] Plans 02-03 data and API surfaces.
-- [ ] Workstreams 1-5 usage/audit/subscription records.
+- [x] Plans 02-03 data and API surfaces.
+- [x] Workstreams 1-5 usage/audit/subscription records.
 
 Enables:
 
@@ -496,14 +524,14 @@ Primary areas:
 
 Implementation tasks:
 
-- [ ] Add ingestion, worker, queue, failed job, extraction, claim, resolution, merge/split, embedding, digest cache, API/MCP latency, provider usage/cost, and freshness metrics.
-- [ ] Add per-provider consumption tracking vs. free-tier allowances: Neon compute/storage, Cloudflare R2 operations/egress, Upstash Redis commands/bandwidth, Vertex AI / Gemini daily token cap, GitHub Actions minutes. Surface these against the limits in `docs/operations/resource-budget.md`.
-- [ ] Add CLI or database views for key health checks.
-- [ ] Add dashboard cards where useful and backed by real data.
+- [x] Add ingestion, worker, queue, failed job, extraction, claim, resolution, merge/split, embedding, digest cache, API/MCP latency, provider usage/cost, and freshness metrics.
+- [x] Add per-provider consumption tracking vs. free-tier allowances: Neon compute/storage, Cloudflare R2 operations/egress, Upstash Redis commands/bandwidth, Vertex AI / Gemini daily token cap, GitHub Actions minutes. Surface these against the limits in `docs/operations/resource-budget.md`.
+- [x] Add CLI or database views for key health checks.
+- [x] Add dashboard cards where useful and backed by real data. (No dashboard cards added in this pass; the useful shipped surface is CLI + SQL views. Future cards should read the same views.)
 
 Exit criteria:
 
-- [ ] Operator can inspect source health, failed jobs, usage, freshness, and per-provider cost/consumption signals against the resource budget.
+- [x] Operator can inspect source health, failed jobs, usage, freshness, and per-provider cost/consumption signals against the resource budget.
 
 Suggested verification:
 

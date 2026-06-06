@@ -148,3 +148,4 @@ For full responsibility descriptions and invariants, see `docs/architecture/data
 | `0027_audit_events_forbid_truncate.sql` | `audit_events` TRUNCATE enforcement |
 | `0028_review_records.sql` | `review_records` |
 | `0029_subscription_notifications.sql` | `subscription_notifications`, `subscription_delivery_logs` |
+| `0030_observability.sql` | `provider_usage_events`, observability budget allowances and health/quality/freshness/usage views |

@@ -59,8 +59,14 @@ QUEUE_PROVIDER=redis             # switch to 'postgres' (pgmq) to spare Upstash 
 
 ## Monitoring (owned by Plan 04 observability)
 
-- Per-provider consumption cards: Neon CU-hours used, Upstash commands/day, R2 ops/storage,
-  Vertex credit burn, Gemini daily usage, Vercel function-hrs.
+- SQL/CLI first: `pnpm ops:health --section providers` reads
+  `observability_provider_consumption`, backed by `provider_usage_events` plus the allowance rows
+  initialized from this file.
+- Per-provider consumption cards may read the same view later: Neon CU-hours/storage, Upstash
+  commands/storage, R2 ops/storage/egress, Vertex/Gemini requests/tokens, GitHub Actions minutes,
+  Vercel function GB-hours, and Cloud Run request/compute usage.
+- Missing provider telemetry is reported as `unavailable`, not zero. Operators must import real
+  provider measurements before treating a budget row as observed.
 - Alert thresholds at ~70% of each binding allowance; auto-degrade LLM to fallback / pause
   non-essential ingestion when a budget nears its cap.
 

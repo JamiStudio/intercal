@@ -547,9 +547,12 @@ Suggested verification:
 
 Goal: Tell agents what Intercal knows, how fresh it is, and where coverage is weak.
 
-Status: [x] Complete (2026-06-05) — `getFreshness` body upgraded from a bare last-updated stamp to a
-real freshness **and** coverage report in `packages/core` (`freshness.ts` + queries.ts fetch),
-verified live against production Neon. REST `/api/v1/freshness` + MCP `get_freshness` surface it
+Status: [x] Complete (2026-06-05; coverage metric audited + redefined 2026-06-05 pass 2) —
+`getFreshness` body in `packages/core` (`freshness.ts` + queries.ts fetch) returns a real freshness
+**and** coverage report; coverage is EVIDENCE DEPTH (evidenced active claims / total active claims),
+**redefined in audit pass 2** away from pass-1's distinct-docs/corpus-size ratio, which degraded with
+corpus growth and gave every entity an identical corpus-driven value (see the coverage task below).
+Verified live against production Neon. REST `/api/v1/freshness` + MCP `get_freshness` surface it
 through the one shared query layer (no new wiring needed — both already dispatch into `getFreshness`).
 
 Depends on:
@@ -582,34 +585,56 @@ Implementation tasks:
       `last_updated_at` and the newest `fact_versions.recorded_at` for that subject (the
       authoritative append-only change axis, consistent with delta.ts). Unknown topic falls back to
       corpus ingest recency (`lastIngestedAt`).
-- [x] Source coverage — `coverage` ∈ [0,1] = distinct source documents backing the entity's active
-      claims / total corpus source documents, clamped to 1. Grounded in the real corpus (the
-      denominator is what Intercal actually has), so it is self-calibrating and **cannot over-state**
-      (distinct ≤ corpus by construction). 0 active claims ⇒ coverage 0 (no recorded knowledge).
+- [x] Source coverage = EVIDENCE DEPTH (audit pass 2 — coverage metric redefined for honesty).
+      `coverage` ∈ [0,1] = the entity's active claims backed by ≥1 source document / its total active
+      claims. **Pass 1 defined coverage = distinct backing docs / total corpus docs; this audit found
+      that misleading and replaced it.** The corpus-ratio metric (a) DEGRADED WITH CORPUS GROWTH — at
+      10k docs with 1 about the entity it reads ~0.0001 even if every claim is perfectly sourced,
+      telling an agent the entity is barely covered when it is fully covered — and (b) carried NO
+      per-entity signal at small scale: proven on production Neon (3-doc corpus) that ALL 52
+      claim-bearing entities scored an identical `0.333` (each from 1 of 3 docs) regardless of how
+      well-evidenced they were — it measured the corpus, not the entity. Evidence depth is bounded
+      [0,1] by construction (evidenced ≤ total claims, **cannot over-state**), is INVARIANT to corpus
+      growth (no corpus denominator), and answers the agent's real question — "how much of what
+      Intercal asserts about this target is source-backed?". A claim without evidence is the genuine
+      coverage gap and is exactly what this measures (the AGENTS.md provenance invariant made a ratio).
+      0 active claims ⇒ coverage 0 (no recorded knowledge). Rationale documented in `freshness.ts`.
 - [x] Stale entity detection — recordings older than a 30-day transaction-time threshold are flagged
-      `stale` in the `staleness` label.
-- [x] Confidence/freshness warnings — single-source (thin) coverage (≤ 0.34) is flagged
-      `thin coverage (N source[s])`; the label distinguishes strong / stale / thin per the exit
-      criterion.
+      `stale`. Threshold justified against the resource-budget cadence (`INGEST_CRON=0 */6 * * *`,
+      every 6h): 30 days ≈ 120 missed ingestion windows — a deliberately conservative "no longer
+      actively maintained" floor, not a per-source SLA. Named constant, tracks the cadence if it moves.
+- [x] Confidence/freshness warnings — TWO distinct, non-degrading signals: (1) an EVIDENCE-DEPTH gap
+      `N of M claims unsourced` when any active claim lacks a source (the real "where is coverage
+      weak" channel, shown first); (2) a CORROBORATION-BREADTH warning `thin coverage (1 source)` when
+      a fully-evidenced entity rests on a single distinct document. Breadth is now a raw DISTINCT-SOURCE
+      COUNT (`THIN_SOURCE_COUNT = 1`), not the old `≤ 0.34` coverage fraction (which was tuned to the
+      replaced metric and meaningless under evidence depth) — so it stays meaningful at any corpus scale.
+      The label still distinguishes strong / stale / thin per the exit criterion.
 - [x] Response fields for known gaps — surfaced through the contract's existing fields: `coverage: 0`
       plus an explicit `staleness` gap string (`no recorded knowledge` for a claim-less entity,
       `no entity known` for an unknown topic). No contract field added; the honesty rule (AGENTS.md)
       is met — an absent signal is reported as an explicit gap, never as fabricated coverage.
-- [x] Deterministic unit tests (`freshness.test.ts`, 12) over the pure assembler: unknown-topic
-      no-data, claim-less-entity gap, coverage math + clamp + divide-by-zero guard, strong/stale/thin
-      labels, and the transaction-time recency pick. The SQL fetch path is covered by the live Neon
-      verification (same fetch/pure split as delta.test.ts / verify.test.ts).
+- [x] Deterministic unit tests (`freshness.test.ts`, 14) over the pure assembler: unknown-topic
+      no-data, claim-less-entity gap, evidence-depth coverage math + clamp, corpus-growth INVARIANCE,
+      the evidence-depth `unsourced` gap, depth-gap-over-breadth precedence, strong/stale/thin labels,
+      and the transaction-time recency pick. The SQL fetch path (now counting evidenced claims) is
+      covered by the live Neon verification (same fetch/pure split as delta.test.ts / verify.test.ts).
 
 Exit criteria:
 
 - [x] Freshness responses distinguish strong, stale, and thin coverage — verified live on production
-      Neon via the real `getFreshness` DB path (project `fancy-boat-93020425`):
-      - covered entity `rust`/`Rustdoc` → `coverage 0.33`, `"today; thin coverage (1 source)"`
-        (honest: the early corpus has only 3 docs, max 1 distinct source per entity);
-      - claim-less entity `kubernetes` → `coverage 0`,
-        `"today; no recorded knowledge (entity present but no claims yet)"`;
-      - unknown topic → `coverage 0`, `"no entity known; corpus last ingested today"`, with the
-        corpus `lastIngestedAt` for overall recency. No fabricated coverage in any case.
+      Neon via the real `getFreshness` DB-signal path (project `fancy-boat-93020425`), evidence-depth
+      metric (audit pass 2). Cross-check: pass-1's corpus-ratio gave EVERY covered entity a flat
+      `0.333`; the evidence-depth metric now reads the entity, not the corpus:
+      - well-covered entity `Antoine du Hamel` (6 claims, all sourced) → `coverage 1.0`,
+        `"thin coverage (1 source)"` (assertions fully evidenced; corroboration single-source — honest);
+      - `rust`/`Rustdoc` (claims all sourced) → `coverage 1.0; "thin coverage (1 source)"`;
+      - claim-less entity `kubernetes` → `coverage 0`, `"no recorded knowledge (entity present but no
+        claims yet)"`;
+      - unknown topic → `coverage 0`, `"no entity known; corpus last ingested …"`, with corpus
+        `lastIngestedAt` for overall recency. No fabricated coverage in any case. (All 114 prod active
+        claims are currently evidenced, so the `N of M claims unsourced` path is exercised by unit test;
+        it is the honest channel for when the pipeline ever surfaces an unsourced claim.)
 
 Suggested verification:
 

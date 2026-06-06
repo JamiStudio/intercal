@@ -19,22 +19,44 @@
  * `recorded_at` for that subject (the authoritative append-only change record, written as the final
  * pipeline stage and therefore reliably ≥ `last_updated_at` — consistent with delta.ts).
  *
- * COVERAGE (entity): corroboration breadth, grounded in the real corpus, not a fabricated target.
- *   - An entity with NO active claims has no recorded knowledge → coverage 0 (explicit thin/no-data).
- *   - Otherwise coverage = distinct backing source documents / total corpus source documents,
- *     clamped to [0,1]. This is literally the contract's definition ("fraction of expected sources
- *     currently covered"): the denominator is the corpus Intercal actually has, so the metric is
- *     self-calibrating — single-source entities read as thin, multi-source corroborated entities
- *     read as strong, and the value rises only as real corroborating sources arrive. Nothing here
- *     can over-state coverage: you cannot cite more distinct sources than exist.
+ * COVERAGE (entity) = EVIDENCE DEPTH: the fraction of the entity's active claims that are backed by
+ * at least one source document. coverage = evidenced active claims / total active claims, in [0,1].
+ *
+ *   WHY THIS, NOT distinct-sources / corpus-size (the metric this audit replaced):
+ *   The contract field is "fraction of expected sources currently covered". The previous
+ *   implementation read that as (distinct docs backing the entity) / (TOTAL corpus docs). That is
+ *   not an honest per-entity coverage signal:
+ *     1. It DEGRADES WITH CORPUS GROWTH. At 10k docs with 1 about the entity, coverage → ~0.0001
+ *        even if every one of the entity's claims is perfectly sourced. The number says "barely
+ *        covered" while the entity is fully covered — actively misleading to an agent.
+ *     2. It CARRIES NO PER-ENTITY SIGNAL at small scale. Verified on production Neon (3-doc corpus):
+ *        ALL 52 claim-bearing entities scored an identical 0.333 (each drawn from 1 of 3 docs),
+ *        regardless of how many well-evidenced claims they had. A 6-claim entity and a 2-claim
+ *        entity read the same. It measured the corpus, not the entity.
+ *   Evidence depth fixes both: it is bounded [0,1] by construction (evidenced ≤ total claims), it is
+ *   INVARIANT to corpus growth (no corpus denominator), and it answers the question the agent is
+ *   actually asking — "how much of what Intercal asserts about this target is source-backed?". A
+ *   claim without evidence is the real coverage gap, and that is exactly what this measures. It can
+ *   never over-state: you cannot have more evidenced claims than claims. This is the AGENTS.md
+ *   provenance invariant ("every public fact must trace to evidence") made into a measurable ratio.
+ *
+ *   - An entity with NO active claims has no recorded knowledge → coverage 0 (explicit gap).
+ *   - Otherwise coverage = evidenced active claims / total active claims.
+ *
+ * CORROBORATION BREADTH (the "thin" warning) is a SEPARATE, also-non-degrading signal: how many
+ * DISTINCT source documents back the entity (a count, never a corpus ratio). A single-source entity
+ * is flagged "thin" so an agent weights a one-source answer accordingly — this is independent of
+ * evidence depth (an entity can be fully evidenced yet single-sourced, which is the common early
+ * state) and, being a raw count, stays meaningful at any corpus scale.
  *
  * STALENESS / WARNINGS: a single human-readable label that distinguishes the states the plan's exit
  * criteria require — strong, stale, and thin coverage — and makes known gaps explicit:
- *   - unknown topic           → "no entity known; <corpus recency>"  (explicit no-data)
- *   - entity, 0 claims        → "no recorded knowledge"              (explicit gap)
- *   - entity, stale recording → "<age>; stale" past the stale threshold
- *   - entity, thin coverage   → "<age>; thin coverage (1 source)"   (single-source warning)
- *   - entity, fresh + covered → "<age>"
+ *   - unknown topic               → "no entity known; <corpus recency>"   (explicit no-data)
+ *   - entity, 0 claims            → "no recorded knowledge"               (explicit gap)
+ *   - entity, stale recording     → "<age>; stale" past the stale threshold
+ *   - entity, unevidenced claims  → "<age>; N of M claims unsourced"      (evidence-depth gap)
+ *   - entity, single-source       → "<age>; thin coverage (1 source)"     (breadth warning)
+ *   - entity, fresh + corroborated→ "<age>"
  */
 import type { components } from '@intercal/shared';
 
@@ -46,12 +68,18 @@ export interface FreshnessParams {
 
 const DAY_MS = 86_400_000;
 // Recordings older than this (in transaction time) are flagged "stale" in the staleness label.
-// 30 days matches the resource-budget cadence assumption that an actively-tracked topic is
-// re-ingested at least monthly; older than that and an agent should treat the answer as aging.
+// Tied to the resource-budget ingestion cadence (`INGEST_CRON=0 */6 * * *`, every 6h): an actively
+// tracked topic is re-touched on the order of hours, so 30 days without ANY new transaction-time
+// write is ~120 missed ingestion windows — well past the point where an agent should treat the
+// answer as aging. It is a deliberately conservative "no longer actively maintained" floor, not a
+// per-source freshness SLA. The threshold is a named constant so it can track the cadence if the
+// budget changes (see docs/operations/resource-budget.md).
 const STALE_AFTER_DAYS = 30;
-// Coverage at/below this fraction is flagged "thin" — the substrate has corroboration from only a
-// small share of the corpus for this target, so an agent should weight the answer accordingly.
-const THIN_COVERAGE = 0.34;
+// Corroboration breadth at/below this DISTINCT-SOURCE COUNT is flagged "thin": the entity rests on a
+// single source document, so an agent should weight a one-source answer accordingly. This is a raw
+// count, NOT a corpus ratio — it stays meaningful at any corpus scale (unlike a fraction that would
+// shrink as the corpus grows). 1 = single-sourced; ≥2 = corroborated.
+const THIN_SOURCE_COUNT = 1;
 
 /** Human age label for a transaction-time instant, or undefined when there is none. */
 function age(from: Date | null): string | undefined {
@@ -75,10 +103,17 @@ export interface EntityFreshnessSignals {
   latestFactVersionAt: Date | null;
   /** Count of active claims about the entity (subject or object). 0 ⇒ no recorded knowledge. */
   activeClaimCount: number;
-  /** Distinct source documents backing those active claims (corroboration breadth). */
+  /**
+   * Active claims about the entity that are backed by ≥1 source document. The coverage numerator;
+   * `evidencedClaimCount / activeClaimCount` is the entity's evidence depth. By construction
+   * `evidencedClaimCount ≤ activeClaimCount`, so coverage can never exceed 1.
+   */
+  evidencedClaimCount: number;
+  /**
+   * Distinct source documents backing the entity's active claims (corroboration breadth, a raw
+   * count). Drives the single-source "thin" warning; independent of evidence depth and corpus size.
+   */
   distinctSourceCount: number;
-  /** Total source documents in the corpus — the coverage denominator. */
-  corpusSourceCount: number;
 }
 
 export interface UnknownFreshnessSignals {
@@ -105,7 +140,9 @@ export function assembleFreshness(signals: FreshnessSignals): S['FreshnessReport
     // `age` returns "today" for same-day ingest, which doesn't compose with "… ago" — phrase it
     // separately so the label always reads naturally ("… ingested today" vs "… ingested 3 days ago").
     const ingestPhrase =
-      ingestAge === 'today' ? 'corpus last ingested today' : `corpus last ingested ${ingestAge} ago`;
+      ingestAge === 'today'
+        ? 'corpus last ingested today'
+        : `corpus last ingested ${ingestAge} ago`;
     const staleness =
       ingestAge !== undefined
         ? `no entity known; ${ingestPhrase}`
@@ -126,16 +163,18 @@ export function assembleFreshness(signals: FreshnessSignals): S['FreshnessReport
   const updatedAge = age(lastUpdated);
   const ageDays = Math.floor((Date.now() - lastUpdated.getTime()) / DAY_MS);
 
-  // Coverage: corroboration breadth grounded in the real corpus. 0 claims ⇒ 0 (no recorded
-  // knowledge — an explicit gap, not a fabricated number). Otherwise distinct backing sources over
-  // the corpus size, clamped to [0,1]. Cannot over-state: distinct sources ≤ corpus size.
+  // Coverage = EVIDENCE DEPTH: fraction of the entity's active claims that are source-backed. 0
+  // claims ⇒ 0 (no recorded knowledge — an explicit gap, not a fabricated number). Otherwise
+  // evidenced / total active claims. Corpus-growth invariant and cannot over-state: evidenced ≤
+  // total by construction. (See file header for why this replaced the old distinct/corpus ratio.)
   const coverage =
-    signals.activeClaimCount === 0 || signals.corpusSourceCount === 0
+    signals.activeClaimCount === 0
       ? 0
-      : Math.min(1, signals.distinctSourceCount / signals.corpusSourceCount);
+      : Math.min(1, signals.evidencedClaimCount / signals.activeClaimCount);
 
   // Staleness label distinguishes the states the plan's exit criteria require — strong / stale /
-  // thin — and makes gaps explicit. Order: no-knowledge gap first, then stale, then thin, else fresh.
+  // thin — and makes gaps explicit. Order: no-knowledge gap first, then stale, then an
+  // evidence-depth gap (unsourced claims), then a single-source breadth warning, else fresh.
   let staleness: string;
   if (signals.activeClaimCount === 0) {
     staleness = updatedAge
@@ -145,7 +184,14 @@ export function assembleFreshness(signals: FreshnessSignals): S['FreshnessReport
     const parts: string[] = [];
     if (updatedAge) parts.push(updatedAge);
     if (ageDays > STALE_AFTER_DAYS) parts.push('stale');
-    if (coverage <= THIN_COVERAGE) {
+    const unsourced = signals.activeClaimCount - signals.evidencedClaimCount;
+    if (unsourced > 0) {
+      // Evidence-depth gap: some of what Intercal asserts about this entity is not source-backed.
+      // This is the real "where is coverage weak" signal — surfaced explicitly, never hidden.
+      parts.push(`${unsourced} of ${signals.activeClaimCount} claims unsourced`);
+    } else if (signals.distinctSourceCount <= THIN_SOURCE_COUNT) {
+      // Fully evidenced but resting on a single document: corroboration is thin. Distinct from the
+      // evidence-depth gap above (which is the stronger warning), so only shown when depth is full.
       const n = signals.distinctSourceCount;
       parts.push(`thin coverage (${n} source${n === 1 ? '' : 's'})`);
     }

@@ -208,11 +208,13 @@ export type { FreshnessParams };
  * "What does Intercal know about X, how fresh is it, and where is coverage weak?" (Plan 03 W7).
  *
  * This is the fetch layer: it resolves the target and gathers the REAL substrate signals (entity
- * transaction-time recency, newest fact version, active-claim count, distinct backing sources, and
- * the corpus size that is the coverage denominator), then delegates to the pure `assembleFreshness`
- * for the coverage + staleness/gap logic. Same split as delta.ts (`buildDelta` + `assembleDigest`)
- * so the policy is unit-testable without a DB. Honesty-first: an unresolved topic or a claim-less
- * entity is reported as an explicit gap (coverage 0), never as invented coverage. See freshness.ts.
+ * transaction-time recency, newest fact version, active-claim count, how many of those claims are
+ * source-backed [the coverage = evidence-depth numerator], and distinct backing sources [the
+ * single-source breadth warning]), then delegates to the pure `assembleFreshness` for the coverage +
+ * staleness/gap logic. Same split as delta.ts (`buildDelta` + `assembleDigest`) so the policy is
+ * unit-testable without a DB. Honesty-first: an unresolved topic or a claim-less entity is reported
+ * as an explicit gap (coverage 0), never as invented coverage. See freshness.ts for the metric
+ * rationale (coverage is evidence depth, corpus-growth invariant — not a distinct/corpus ratio).
  */
 export async function getFreshness(db: Db, params: FreshnessParams): Promise<S['FreshnessReport']> {
   const entity = await findEntityRow(db, params.topic_or_entity);
@@ -226,7 +228,9 @@ export async function getFreshness(db: Db, params: FreshnessParams): Promise<S['
     return assembleFreshness({ kind: 'unknown', topic: params.topic_or_entity, lastIngestedAt });
   }
 
-  // Active claims about the entity (subject OR object) — the corroboration base.
+  // Active claims about the entity (subject OR object) — the corroboration base. We need, per claim,
+  // its backing source documents: the count of claims with ≥1 source is the coverage (evidence
+  // depth) numerator, and the union of distinct sources is the corroboration-breadth signal.
   const claimRows = await db
     .selectFrom('claims')
     .select(['source_document_ids'])
@@ -236,23 +240,21 @@ export async function getFreshness(db: Db, params: FreshnessParams): Promise<S['
     )
     .execute();
   const activeClaimCount = claimRows.length;
+  let evidencedClaimCount = 0;
   const distinctSources = new Set<string>();
-  for (const c of claimRows) for (const id of c.source_document_ids) distinctSources.add(id);
+  for (const c of claimRows) {
+    if (c.source_document_ids.length > 0) evidencedClaimCount += 1;
+    for (const id of c.source_document_ids) distinctSources.add(id);
+  }
 
-  // Newest fact-version transaction time for this subject (authoritative change axis), the corpus
-  // size (coverage denominator), in one round-trip each alongside the claims fetch above.
-  const [latestFv, corpus] = await Promise.all([
-    db
-      .selectFrom('fact_versions')
-      .select((eb) => eb.fn.max('recorded_at').as('latest'))
-      .where('fact_subject_type', '=', 'entity')
-      .where('fact_subject_id', '=', entity.id)
-      .executeTakeFirst(),
-    db
-      .selectFrom('source_documents')
-      .select((eb) => eb.fn.countAll().as('n'))
-      .executeTakeFirst(),
-  ]);
+  // Newest fact-version transaction time for this subject (the authoritative append-only change
+  // axis) — the only remaining DB signal the assembler needs beyond the claims fetch above.
+  const latestFv = await db
+    .selectFrom('fact_versions')
+    .select((eb) => eb.fn.max('recorded_at').as('latest'))
+    .where('fact_subject_type', '=', 'entity')
+    .where('fact_subject_id', '=', entity.id)
+    .executeTakeFirst();
 
   return assembleFreshness({
     kind: 'entity',
@@ -260,8 +262,8 @@ export async function getFreshness(db: Db, params: FreshnessParams): Promise<S['
     lastUpdatedAt: entity.last_updated_at,
     latestFactVersionAt: (latestFv?.latest as Date | null) ?? null,
     activeClaimCount,
+    evidencedClaimCount,
     distinctSourceCount: distinctSources.size,
-    corpusSourceCount: Number(corpus?.n ?? 0),
   });
 }
 

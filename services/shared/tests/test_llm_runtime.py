@@ -74,6 +74,7 @@ class _FakePool:
         self.fail_fetch = fail_fetch
         self.usage_quantity = usage_quantity
         self.executed: list[tuple[str, tuple[Any, ...]]] = []
+        self.fetchrow_calls: list[tuple[str, tuple[Any, ...]]] = []
 
     async def execute(self, sql: str, *args: Any) -> str:
         self.executed.append((sql, args))
@@ -87,6 +88,7 @@ class _FakePool:
     async def fetchrow(self, sql: str, *args: Any) -> dict[str, Any]:
         if self.fail_fetch:
             raise RuntimeError("table missing")
+        self.fetchrow_calls.append((sql, args))
         return {"quantity_used": self.usage_quantity}
 
 
@@ -165,6 +167,19 @@ async def test_llm_provider_budget_states_unavailable_is_empty() -> None:
 @pytest.mark.asyncio
 async def test_llm_daily_request_usage_reads_real_usage_rows() -> None:
     assert await llm_daily_request_usage(pool=_FakePool(usage_quantity=17)) == 17
+
+
+@pytest.mark.asyncio
+async def test_llm_daily_request_usage_uses_half_open_current_day_window() -> None:
+    pool = _FakePool(usage_quantity=17)
+
+    await llm_daily_request_usage(pool=pool)
+
+    sql, args = pool.fetchrow_calls[0]
+    assert "period_start >= $2 AND period_start < $3" in sql
+    assert "period_start IS NULL AND observed_at >= $2 AND observed_at < $3" in sql
+    assert "period_end >= $2" not in sql
+    assert args[1] < args[2]
 
 
 @pytest.mark.asyncio

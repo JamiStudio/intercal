@@ -149,3 +149,4 @@ For full responsibility descriptions and invariants, see `docs/architecture/data
 | `0028_review_records.sql` | `review_records` |
 | `0029_subscription_notifications.sql` | `subscription_notifications`, `subscription_delivery_logs` |
 | `0030_observability.sql` | `provider_usage_events`, observability budget allowances and health/quality/freshness/usage views |
+| `0031_provider_consumption_windows.sql` | half-open provider-consumption budget windows for current day/month rollups |

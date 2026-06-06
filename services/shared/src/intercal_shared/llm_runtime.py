@@ -285,10 +285,9 @@ async def llm_daily_request_usage(*, pool: Any) -> int:
             WHERE provider = ANY($1::text[])
               AND allowance_key = 'daily_requests'
               AND (
-                observed_at >= $2
-                OR period_end >= $2
+                (period_start >= $2 AND period_start < $3)
+                OR (period_start IS NULL AND observed_at >= $2 AND observed_at < $3)
               )
-              AND observed_at < $3
             """,
             ["vertex", "gemini"],
             period_start,

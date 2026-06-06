@@ -111,6 +111,11 @@ The first proof consumes the same adapters, provenance rules, and public query p
   and the baseline seeding report, and confirmed no seed or source-registry changes are required
   for this pass because current vocabularies cover the taxonomy and only two adapters are live.
   Future implementation remains in Workstreams 2 through 4.
+- 2026-06-06T11:41:15-04:00 — Dispatched mandatory Workstream 1 pass 2 to agent
+  `019e9d98-46e8-74e2-a5f2-423c03eaf218` (`Dirac`). Ownership boundary: Workstream 1 taxonomy,
+  source-policy, seed-vocabulary conclusions, baseline report alignment, and roadmap status only.
+  Next coordinator action: poll in short intervals, record result in
+  `docs/engineering/agents/orchestrator-logs/`, then apply the second-pass gate.
 
 ## Workstream 1: Corpus Scope And Source Taxonomy
 

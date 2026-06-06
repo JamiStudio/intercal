@@ -134,6 +134,11 @@ The first proof consumes the same adapters, provenance rules, and public query p
   Python tests, Workstream 2 roadmap status, and changelog. Next coordinator action: poll in short
   intervals, record result in `docs/engineering/agents/orchestrator-logs/`, then dispatch mandatory
   Workstream 2 pass 2 after pass 1 lands.
+- 2026-06-06T11:55:04-04:00 — Workstream 2 pass 1 agent
+  `019e9d9d-4c64-7993-ae9b-0717e42574c8` was closed as a stale tool-session handle after repeated
+  timed polls and a queued status nudge returned no checkpoint. Previous status was `running`; no
+  result or changes were accepted from that handle. Next coordinator action: dispatch replacement
+  Workstream 2 pass 1 from current repo state.
 
 ## Workstream 1: Corpus Scope And Source Taxonomy
 

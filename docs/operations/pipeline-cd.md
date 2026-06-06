@@ -109,6 +109,13 @@ Pause/resume uses the existing source lifecycle and cursor rules:
 - **Backfill caps:** use `--max-documents`, `--max-sources`, a date range, and a source allowlist
   for proof runs before expanding. Prefer a dry-run first, then a throwaway Neon branch, then a
   small production proof.
+- **Source HTTP telemetry:** ingestion-owned source HTTP clients append real request-attempt counts
+  to `provider_usage_events` (`provider='source_http'`, `metric_name='requests'`) with per-host
+  aggregate metadata and no URLs or secrets. These rows intentionally have no allowance key because
+  upstream limits are source-specific, not a global provider budget.
+- **Queue telemetry:** the backfill path does not currently dispatch queue work. Queue command counts
+  remain unavailable until `QueuePort` or queue adapters emit real command usage; do not infer
+  Upstash usage from backfill runs.
 
 Override the in-code defaults without a code change by setting GitHub **repository variables**
 (`vars.*`): `INGEST_MAX_DOCS_PER_RUN`, `EXTRACT_ONLY_CHANGED`, `LLM_DAILY_REQUEST_BUDGET`,
@@ -142,8 +149,10 @@ entities created/merged, relationships, fact versions, per-stage error counts, f
 workflow tees this into `$GITHUB_STEP_SUMMARY` so each run's counts are visible on the run page.
 `ingestion_runs` records source counts, cursor state, trigger, failures, and skip counts. LLM
 request/token usage is appended to `provider_usage_events` by the shared budgeted LLM wrapper when a
-provider reports real measurements. A `failed` status (or any unhandled error) returns a non-zero
-exit and marks the run red.
+provider reports real measurements. Source HTTP request attempts are appended by the ingestion job
+when it owns the HTTP client. Queue command usage is still unavailable from this path because the
+queue port/adapters do not emit command events. A `failed` status (or any unhandled error) returns a
+non-zero exit and marks the run red.
 
 ## Verifying a change to the workflow
 

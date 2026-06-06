@@ -68,6 +68,10 @@ Historical backfill uses the same worker path as scheduled ingestion. Operators 
 `intercal-pipeline backfill --max-documents <n> --max-sources <n> --start-date <YYYY-MM-DD>
 --end-date <YYYY-MM-DD>` plus a source allowlist or `--source-class`. Backfill runs are dry-run
 first, then a throwaway Neon branch, then a small production proof before full-corpus expansion.
+When ingestion owns the source HTTP client, it appends real `source_http` request measurements to
+`provider_usage_events` with `allowance_key=NULL`; source-specific upstream policies are still owned
+by the source configuration, not a fake global allowance. Queue command usage remains unavailable
+for pipeline backfill until `QueuePort`/queue adapters emit real command counts; do not zero-fill it.
 
 ## Monitoring (owned by Plan 04 observability)
 
@@ -79,6 +83,12 @@ first, then a throwaway Neon branch, then a small production proof before full-c
   Vercel function GB-hours, and Cloud Run request/compute usage.
 - Missing provider telemetry is reported as `unavailable`, not zero. Operators must import real
   provider measurements before treating a budget row as observed.
+- Source HTTP request attempts from ingestion-owned clients are recorded as append-only
+  `provider_usage_events` rows (`provider='source_http'`, `metric_name='requests'`,
+  no allowance key). These are operational measurements, not provider-budget rows.
+- Queue command usage is not emitted by the current queue port/adapters. Treat Upstash command rows
+  as unavailable unless real provider telemetry has been imported by an ops job or a later port
+  change records command counts.
 - Alert thresholds at ~70% of each binding allowance. The worker runtime reads
   `observability_provider_consumption` for Vertex/Gemini daily-request rows: `warning` providers are
   deprioritized behind fallback, and `exceeded` providers are excluded. It also seeds the local

@@ -21,6 +21,7 @@ import hashlib
 import json
 import logging
 import uuid
+from collections import Counter
 from typing import Any
 
 _log = logging.getLogger(__name__)
@@ -168,12 +169,20 @@ async def ingest_source(
     final_cursor: dict[str, object] = dict(cursor_state) if cursor_state else {}
     run_error: str | None = None
 
+    counted_http_client: Any | None = None
+    owns_counted_http_client = False
+    http_usage = _HttpUsageCounter()
+    if http_client is None:
+        counted_http_client, owns_counted_http_client = _make_counted_http_client(http_usage)
+    else:
+        counted_http_client = http_client
+
     try:
         async for doc in adapter.fetch(
             adapter_config=adapter_config,
             cursor_state=cursor_state,
             max_documents=max_documents,
-            http_client=http_client,
+            http_client=counted_http_client,
             cursor_sink=final_cursor,
         ):
             counters["fetched"] += 1
@@ -332,6 +341,21 @@ async def ingest_source(
         await _mark_run_failed(pool, run_id, counters, run_error)
         await _increment_consecutive_failures(pool, source_id)
         raise
+
+    finally:
+        if owns_counted_http_client and counted_http_client is not None:
+            try:
+                await counted_http_client.aclose()
+            except Exception as close_exc:
+                _log.debug("ingest_source: counted HTTP client close failed: %s", close_exc)
+        await _record_source_http_usage(
+            pool=pool,
+            source_id=source_id,
+            source_slug=str(source_row["slug"]),
+            adapter_name=adapter_name,
+            trigger=trigger,
+            usage=http_usage,
+        )
 
     _log.info(
         "ingest_source: completed source_id=%s run_id=%s %s",
@@ -761,6 +785,90 @@ def _infer_document_type(doc: Any) -> str:
     if "github" in adapter:
         return "release_notes"
     return "article"
+
+
+class _HttpUsageCounter:
+    """Counts source-adapter HTTP request attempts without storing URLs."""
+
+    def __init__(self) -> None:
+        self.requests = 0
+        self.by_host: Counter[str] = Counter()
+
+    async def record_request(self, request: Any) -> None:
+        self.requests += 1
+        host = getattr(getattr(request, "url", None), "host", None)
+        if host:
+            self.by_host[str(host)] += 1
+
+
+def _make_counted_http_client(usage: _HttpUsageCounter) -> tuple[Any, bool]:
+    """Return an owned httpx client with request-count instrumentation."""
+    import httpx
+
+    return (
+        httpx.AsyncClient(
+            timeout=httpx.Timeout(10.0, connect=5.0),
+            event_hooks={"request": [usage.record_request]},
+        ),
+        True,
+    )
+
+
+async def _record_source_http_usage(
+    *,
+    pool: Any,
+    source_id: str,
+    source_slug: str,
+    adapter_name: str,
+    trigger: str,
+    usage: _HttpUsageCounter,
+) -> None:
+    """Append real source HTTP request telemetry when observability exists.
+
+    Source-adapter HTTP requests do not have a stable provider allowance row:
+    each source has its own upstream policy.  Record the measurement with
+    ``allowance_key=NULL`` so the event is truthful without pretending a global
+    budget exists.
+    """
+    if usage.requests <= 0:
+        return
+    period_start, period_end = _utc_day_window()
+    metadata = {
+        "source_id": source_id,
+        "source_slug": source_slug,
+        "adapter_name": adapter_name,
+        "trigger": trigger,
+        "requests_by_host": dict(sorted(usage.by_host.items())),
+    }
+    try:
+        await pool.execute(
+            """
+            INSERT INTO provider_usage_events
+                (provider, allowance_key, metric_name, metric_unit, quantity,
+                 cost_usd, period_start, period_end, source, metadata)
+            VALUES ($1, NULL, $2, $3, $4, NULL, $5, $6, $7, $8::jsonb)
+            """,
+            "source_http",
+            "requests",
+            "requests",
+            usage.requests,
+            period_start,
+            period_end,
+            "services/ingest/jobs.py",
+            json.dumps(metadata, sort_keys=True),
+        )
+    except Exception as exc:
+        _log.warning(
+            "ingest_source: source HTTP usage could not be recorded for source_id=%s: %s",
+            source_id,
+            exc,
+        )
+
+
+def _utc_day_window(now: _dt.datetime | None = None) -> tuple[_dt.datetime, _dt.datetime]:
+    current = now or _dt.datetime.now(tz=_dt.UTC)
+    start = _dt.datetime(current.year, current.month, current.day, tzinfo=_dt.UTC)
+    return start, start + _dt.timedelta(days=1)
 
 
 async def _mark_run_failed(

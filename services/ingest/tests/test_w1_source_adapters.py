@@ -12,6 +12,7 @@ import uuid
 from typing import Any
 from unittest.mock import AsyncMock, MagicMock
 
+import intercal_ingest.jobs as ingest_jobs
 import pytest
 from intercal_ingest.jobs import (
     _parse_timestamp,  # pyright: ignore[reportPrivateUsage]  # tested directly: load-bearing parse
@@ -681,6 +682,145 @@ async def test_ingest_source_success_with_fake_adapter() -> None:
     assert result["new"] == 1
     assert result["skipped"] == 0
     assert result["errors"] == 0
+
+
+@pytest.mark.asyncio
+async def test_ingest_source_records_owned_http_usage(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Owned source HTTP clients append real request counts to provider_usage_events."""
+    import httpx
+    from intercal_shared.source_registry import SourceRegistry
+
+    source_id = uuid.uuid4()
+    row = _make_source_row(source_id, adapter_name="fake_http_v1")
+    pool = _make_fake_pool(source_row=row)
+
+    class FakeHttpAdapter:
+        adapter_name = "fake_http_v1"
+
+        async def fetch(
+            self,
+            *,
+            adapter_config: dict[str, object],
+            cursor_state: dict[str, object] | None = None,
+            max_documents: int = 200,
+            http_client: object | None = None,
+            cursor_sink: dict[str, object] | None = None,
+        ) -> Any:
+            assert isinstance(http_client, httpx.AsyncClient)
+            await http_client.get("https://sources.example.test/document")
+            yield RawDocument(
+                content=b"hello",
+                external_id="fake-http:1",
+                title="Fake HTTP document",
+                published_at="2026-06-06T00:00:00Z",
+                content_type="text/plain",
+            )
+
+    def counted_mock_client(
+        usage: ingest_jobs._HttpUsageCounter,  # pyright: ignore[reportPrivateUsage]
+    ) -> tuple[httpx.AsyncClient, bool]:
+        def handler(request: httpx.Request) -> httpx.Response:
+            return httpx.Response(200, text="ok")
+
+        return (
+            httpx.AsyncClient(
+                transport=httpx.MockTransport(handler),
+                event_hooks={"request": [usage.record_request]},
+            ),
+            True,
+        )
+
+    monkeypatch.setattr(ingest_jobs, "_make_counted_http_client", counted_mock_client)
+    reg = SourceRegistry()
+    reg.register(FakeHttpAdapter())
+
+    result = await ingest_source(
+        source_id=str(source_id),
+        pool=pool,
+        storage=None,
+        max_documents=1,
+        registry=reg,
+        trigger="backfill",
+    )
+
+    assert result["new"] == 1
+    usage_calls = [
+        call
+        for call in pool.execute.call_args_list
+        if "INSERT INTO provider_usage_events" in call.args[0]
+    ]
+    assert len(usage_calls) == 1
+    args = usage_calls[0].args
+    assert args[1] == "source_http"
+    assert args[2] == "requests"
+    assert args[4] == 1
+    metadata = json.loads(args[8])
+    assert metadata["source_id"] == str(source_id)
+    assert metadata["source_slug"] == "test-source"
+    assert metadata["adapter_name"] == "fake_http_v1"
+    assert metadata["trigger"] == "backfill"
+    assert metadata["requests_by_host"] == {"sources.example.test": 1}
+
+
+@pytest.mark.asyncio
+async def test_ingest_source_http_usage_recording_is_non_blocking(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Missing observability migrations must not fail a successful ingest run."""
+    import httpx
+    from intercal_shared.source_registry import SourceRegistry
+
+    source_id = uuid.uuid4()
+    row = _make_source_row(source_id, adapter_name="fake_http_v1")
+    pool = _make_fake_pool(source_row=row)
+
+    async def execute_with_missing_usage_table(query: str, *args: Any) -> str:
+        if "INSERT INTO provider_usage_events" in query:
+            raise RuntimeError("relation provider_usage_events does not exist")
+        return "OK"
+
+    pool.execute = AsyncMock(side_effect=execute_with_missing_usage_table)
+
+    class FakeHttpAdapter:
+        adapter_name = "fake_http_v1"
+
+        async def fetch(
+            self,
+            *,
+            adapter_config: dict[str, object],
+            cursor_state: dict[str, object] | None = None,
+            max_documents: int = 200,
+            http_client: object | None = None,
+            cursor_sink: dict[str, object] | None = None,
+        ) -> Any:
+            assert isinstance(http_client, httpx.AsyncClient)
+            await http_client.get("https://sources.example.test/document")
+            yield RawDocument(content=b"hello", external_id="fake-http:1")
+
+    def counted_mock_client(
+        usage: ingest_jobs._HttpUsageCounter,  # pyright: ignore[reportPrivateUsage]
+    ) -> tuple[httpx.AsyncClient, bool]:
+        return (
+            httpx.AsyncClient(
+                transport=httpx.MockTransport(lambda req: httpx.Response(200, text="ok")),
+                event_hooks={"request": [usage.record_request]},
+            ),
+            True,
+        )
+
+    monkeypatch.setattr(ingest_jobs, "_make_counted_http_client", counted_mock_client)
+    reg = SourceRegistry()
+    reg.register(FakeHttpAdapter())
+
+    result = await ingest_source(
+        source_id=str(source_id),
+        pool=pool,
+        storage=None,
+        max_documents=1,
+        registry=reg,
+    )
+
+    assert result["new"] == 1
 
 
 @pytest.mark.asyncio

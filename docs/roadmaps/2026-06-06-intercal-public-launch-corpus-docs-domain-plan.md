@@ -451,7 +451,7 @@ Implementation tasks:
 - [x] Add date-windowed backfill modes and source allowlists to `intercal-pipeline`.
 - [x] Add bounded Actions and Cloud Run Job execution controls for historical backfill with `max_documents`, date range, source class, source allowlists, source caps, and dry-run controls.
 - [x] Add resumable cursor tracking and idempotent dedup proof for large historical runs.
-- [~] Add provider budget guards for LLM extraction, embeddings, HTTP calls, and queue usage.
+- [~] Add provider budget guards for LLM extraction, embeddings, source HTTP calls, and queue usage.
 - [x] Add observability records for source counts, extraction counts, fact writes, skipped documents, policy blocks, token usage, and failures.
 - [x] Add operator runbook entries for first proof, full corpus expansion, pause/resume, rollback, and cost review.
 
@@ -469,6 +469,16 @@ controls, and Cloud Run Jobs can execute the same CLI with bounded args. Observa
 existing `PipelineRunHealth`, `ingestion_runs`, and `provider_usage_events` path. Remaining pass 2
 work is to harden non-LLM provider budget accounting for HTTP/request and queue command usage where
 the current source/queue ports do not yet emit durable usage events.
+
+Pass 2 closeout note: the fresh-context audit kept the pass 1 execution semantics intact and added
+truthful source HTTP request telemetry inside the Workstream 3 boundary. When ingestion owns the
+source HTTP client, request attempts are counted through httpx request hooks and appended to
+`provider_usage_events` as `provider='source_http'`, `metric_name='requests'`, with aggregate host
+counts and no URL or secret metadata. These rows intentionally use `allowance_key=NULL` because
+source-specific upstream policies are not a global provider allowance. Queue command accounting
+remains an explicit limitation: pipeline backfill does not instantiate `QueuePort`, and the current
+queue port/adapters do not emit command counts, so Upstash command usage must remain unavailable
+unless imported from real provider telemetry or added in a later queue-port change.
 
 Suggested verification:
 

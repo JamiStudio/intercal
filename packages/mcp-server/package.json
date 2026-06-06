@@ -25,7 +25,8 @@
   "dependencies": {
     "@intercal/core": "workspace:*",
     "@intercal/shared": "workspace:*",
-    "@modelcontextprotocol/sdk": "catalog:"
+    "@modelcontextprotocol/sdk": "catalog:",
+    "jose": "catalog:"
   },
   "devDependencies": {
     "@intercal/sdk": "workspace:*",

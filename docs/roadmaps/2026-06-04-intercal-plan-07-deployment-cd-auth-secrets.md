@@ -210,15 +210,39 @@ Exit criteria:
 
 Goal: MCP server as an OAuth 2.1 resource server per the current spec.
 
+Status: [x] Complete (2026-06-06). Runbook: `docs/operations/mcp-auth.md`. Spec re-verified against
+the official MCP Authorization spec for `2025-06-18` + `2025-11-25` (+ RFC 9728/8707/8414/9068, OAuth
+2.1). `/api/mcp` is now an OAuth 2.1 **resource server**; the Authorization Server is an external,
+env-configured integration seam (the AS is out of scope of the MCP spec). Live-verified 7/7 against
+real Neon + live HTTP for the well-known document. REST auth (W5) seam left untouched.
+
 Implementation tasks:
 
-- [ ] Protect `/api/mcp` with OAuth 2.1 resource-server validation (access-token verification,
-      scopes), aligned to MCP spec 2025-11-25 (re-verify against any RC at build time).
-- [ ] Document client onboarding; tests for token validation + scope enforcement.
+- [x] Protect `/api/mcp` with OAuth 2.1 resource-server validation
+      (`packages/mcp-server/src/auth/`): audience-bound bearer access-token verification via `jose`
+      against the AS's JWKS (signature + `iss` + `aud` [RFC 8707] + `exp`; no hand-rolled crypto),
+      `read`-scope enforcement, RFC 9728 Protected Resource Metadata served at
+      `/.well-known/oauth-protected-resource` (+ path-suffixed `/api/mcp`), and a spec-correct `401`
+      + `WWW-Authenticate(resource_metadata, scope)` / `403 insufficient_scope`. The gate runs in
+      `handleMcpRequest` before any JSON-RPC. Aligned to MCP spec `2025-06-18`/`2025-11-25`.
+- [x] Public-read posture preserved (per the plan): with no AS configured, anonymous MCP reads remain
+      allowed (MCP auth is OPTIONAL per spec) — the live default; enabling auth is an env-only change
+      (`MCP_OAUTH_ISSUER` …). A presented-but-bad credential is a hard 401, never a silent downgrade.
+- [x] Document client onboarding (`docs/operations/mcp-auth.md` + `.env.example` seam block); tests
+      for token validation + scope enforcement (14 unit + 3 web-handler) and a live harness
+      (`scripts/dev/verify-mcp-auth.mjs`).
 
 Exit criteria:
 
-- [ ] MCP tools require a valid token; scopes enforced; unauthenticated calls rejected.
+- [x] MCP tools require a valid token when an AS is configured; scopes enforced (403); unauthenticated
+      calls rejected (401 + `WWW-Authenticate` → PRM); audience-mismatched tokens rejected (RFC 8707);
+      initialize/tools-list/tools-call still work (anonymously when auth is disabled). Live-verified
+      7/7 (real Neon) + the well-known PRM document resolves over HTTP.
+
+Deferred (explicit seam, not faked): the external Authorization Server (token issuance, RFC 7591 /
+Client ID Metadata Documents registration, RFC 8414 AS metadata) is wired via `MCP_OAUTH_*` env when
+an AS is provisioned. Per-principal MCP rate limiting / usage events can attach at the gate's
+resolved-principal seam (Plan 04 W6).
 
 ## Workstream 7: Backups & restore proof
 

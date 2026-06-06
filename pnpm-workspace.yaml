@@ -31,6 +31,9 @@ catalog:
 
   # MCP
   "@modelcontextprotocol/sdk": ^1.29.0
+  # JOSE (JWT/JWKS) for MCP OAuth 2.1 resource-server token verification. Pinned to the same major
+  # the MCP SDK depends on, so one resolved copy serves both (no duplicate jose in the tree).
+  jose: ^6.1.0
 
   # Frontend
   next: ^16.2.0

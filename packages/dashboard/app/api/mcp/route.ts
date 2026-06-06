@@ -6,8 +6,13 @@ import { handleMcpRequest } from '@intercal/mcp-server';
 //
 // Stateless Streamable HTTP: each request builds a fresh MCP server + transport over the shared
 // Neon-backed query layer (`@intercal/core`), so there is no per-session server state to break on
-// serverless. Auth (OAuth 2.1 resource server) is Plan 07 W6 — this is a clean, unauthenticated
-// seam until then.
+// serverless.
+//
+// Auth (Plan 07 W6): `handleMcpRequest` runs an OAuth 2.1 resource-server gate first. It resolves
+// its config from the environment — when an Authorization Server is configured (`MCP_OAUTH_ISSUER`),
+// bearer access tokens are validated (audience-bound) and unauthenticated calls get a 401 +
+// `WWW-Authenticate` pointing at `/.well-known/oauth-protected-resource`; when unset, the surface
+// keeps its public-read posture (anonymous reads). See `docs/operations/mcp-auth.md`.
 //
 // Node runtime is required: the query layer uses `pg` (TCP sockets), which the Edge runtime
 // cannot provide. `force-dynamic` opts out of any caching of the JSON-RPC responses.

@@ -78,11 +78,15 @@ Auth/rate limits -> source policy -> audit events -> feedback/review records -> 
 
 Goal: Protect REST and MCP access with scoped keys and measurable usage. REST uses hashed scoped API keys; MCP at `/api/mcp` uses OAuth 2.1 resource-server (per decision 0001 D10).
 
-Status: [~] REST portion **complete** (2026-06-06, jointly with Plan 07 W5) — hashed scoped keys,
-rate limits, usage events live on `/api/v1/*`; runbook `docs/operations/auth-and-rate-limits.md`.
-Audit-2 (2026-06-06): rate-limit IP-trust hardened (trusted `x-real-ip` / right-most XFF, never the
-spoofable left-most), TTL-less Upstash counter self-heals (no permanent-429 lockout), IPv6 `::`
-anonymization fixed; re-verified live. MCP OAuth 2.1 is a separate stream (Plan 07 W6) — **not yet** done.
+Status: [x] **Complete** (2026-06-06, jointly with Plan 07 W5 + W6). REST: hashed scoped keys, rate
+limits, usage events live on `/api/v1/*`; runbook `docs/operations/auth-and-rate-limits.md`. Audit-2
+(2026-06-06): rate-limit IP-trust hardened (trusted `x-real-ip` / right-most XFF, never the spoofable
+left-most), TTL-less Upstash counter self-heals (no permanent-429 lockout), IPv6 `::` anonymization
+fixed; re-verified live. MCP: `/api/mcp` is now an OAuth 2.1 **resource server** (Plan 07 W6) —
+audience-bound bearer-token validation, RFC 9728 Protected Resource Metadata, 401 + `WWW-Authenticate`
+/ 403 `insufficient_scope`, public-read posture when no AS is configured; AS is the env seam. Runbook
+`docs/operations/mcp-auth.md`; live-verified 7/7. By design the REST (API-key) and MCP (OAuth) surfaces
+use different mechanisms and do not share one middleware.
 
 Depends on:
 
@@ -109,24 +113,27 @@ Primary areas:
 Implementation tasks:
 
 - [x] Add API key creation, hashing, validation, and scopes. (REST — `@intercal/core/src/auth/`.)
-- [~] Add shared REST/MCP auth middleware. (REST middleware done in `packages/api/src/auth/`; the
-      MCP server uses OAuth 2.1, wired in Plan 07 W6 — by design the two surfaces do not share one
-      middleware.)
+- [x] Add REST/MCP auth. (REST middleware in `packages/api/src/auth/`; MCP OAuth 2.1 resource-server
+      gate in `packages/mcp-server/src/auth/`, run in `handleMcpRequest`. By design the two surfaces
+      use different mechanisms — API keys vs OAuth bearer tokens — and do not share one middleware.)
 - [x] Add rate-limit policy and usage event recording. (Port + Upstash/in-memory adapters; per-key
-      and per-IP policy honoring `resource-budget.md`; `usage_events` row per request.)
+      and per-IP policy honoring `resource-budget.md`; `usage_events` row per request. REST surface;
+      the MCP gate exposes a resolved-principal seam where per-principal limits/usage can attach.)
 - [x] Add key rotation and local dev docs. (`docs/operations/auth-and-rate-limits.md` +
-      `scripts/ops/keys.mjs` rotation flow.)
+      `scripts/ops/keys.mjs` rotation flow; MCP client onboarding in `docs/operations/mcp-auth.md`.)
 
 Exit criteria:
 
 - [x] REST auth and rate-limit tests cover allowed, denied (401/403), exhausted (429), anonymous,
-      and local-dev cases (24 unit tests + a 17/17 live Neon-branch verification). MCP OAuth exit
-      criteria remain with Plan 07 W6.
+      and local-dev cases (24 unit tests + a 17/17 live Neon-branch verification). MCP OAuth: token
+      validation + scope enforcement + 401/403 + audience binding + anon-posture covered (17 tests +
+      a 7/7 live verification); see Plan 07 W6.
 
 Suggested verification:
 
-- `pnpm test` (api + core auth/rate-limit suites)
-- `DATABASE_URL=<neon-branch> node scripts/dev/verify-auth.mjs` (live)
+- `pnpm test` (api + core auth/rate-limit + mcp-server auth suites)
+- `DATABASE_URL=<neon-branch> node scripts/dev/verify-auth.mjs` (live REST)
+- `DATABASE_URL=<neon-branch> node scripts/dev/verify-mcp-auth.mjs` (live MCP OAuth)
 
 ## Workstream 2: Source Policy And Trust
 

@@ -1,5 +1,6 @@
 import type { Db } from '@intercal/core';
 import { WebStandardStreamableHTTPServerTransport } from '@modelcontextprotocol/sdk/server/webStandardStreamableHttp.js';
+import { type GateDeps, gateMcpRequest, resolveGateDeps } from './auth/index.js';
 import { buildMcpServer } from './server.js';
 
 /**
@@ -7,6 +8,14 @@ import { buildMcpServer } from './server.js';
  *
  * Returns a Web `Response`, so it drops straight into a Next.js App Router route handler, a
  * Hono handler, or any Web-standard runtime (Vercel functions, Cloudflare Workers, Deno, Bun).
+ *
+ * OAuth 2.1 resource-server protection (Plan 07 W6) runs FIRST, before any JSON-RPC handling:
+ *  - When an Authorization Server is configured (`MCP_OAUTH_ISSUER`), bearer access tokens are
+ *    validated (audience-bound, RFC 8707/9068) and missing/invalid tokens are rejected with a
+ *    spec-correct 401 + `WWW-Authenticate` pointing at the Protected Resource Metadata.
+ *  - When no AS is configured, the gate resolves to ANONYMOUS and the surface keeps its public-read
+ *    posture (MCP authorization is OPTIONAL per spec) — the live default today.
+ * `deps` is injectable for tests; production resolves it from the request origin + environment.
  *
  * Stateless by design, for serverless:
  *  - `sessionIdGenerator: undefined` disables MCP session management (no in-memory session map).
@@ -22,7 +31,17 @@ import { buildMcpServer } from './server.js';
  * The DB handle is injected (a long-lived pool created once per cold start); only the MCP
  * server/transport are per-request.
  */
-export async function handleMcpRequest(db: Db, request: Request): Promise<Response> {
+export async function handleMcpRequest(
+  db: Db,
+  request: Request,
+  deps?: GateDeps,
+): Promise<Response> {
+  // 1. OAuth 2.1 resource-server gate. Short-circuit on 401/403; otherwise proceed (anonymous or
+  //    authorized). The resolved principal is not yet needed by the read tools (public-read graph),
+  //    but the gate is the enforcement point and the seam where per-principal policy will attach.
+  const gate = await gateMcpRequest(request, deps ?? resolveGateDeps(request.url));
+  if (!gate.ok) return gate.response;
+
   const server = buildMcpServer(db);
   const transport = new WebStandardStreamableHTTPServerTransport({
     sessionIdGenerator: undefined,

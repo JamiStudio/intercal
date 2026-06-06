@@ -223,13 +223,17 @@ The first proof consumes the same adapters, provenance rules, and public query p
   identifier/cursor stability gap: arXiv now suppresses dated entries without stable Atom IDs,
   Wikidata SPARQL batches reset stale offsets when the active query differs from the saved cursor
   hash, and SPARQL rows without stable `item`/`qid` identifiers no longer emit offset-derived
-  source documents. Focused adapter tests passed. Workstream 2 is quiet after this pass; source
-  catalog rows, backfill execution, budgets, retries, and operator controls remain Workstream 3
-  scope.
+  source documents. Focused adapter tests passed. Coordinator checkpoint `c0e9fb5` kept Workstream 2
+  open because pass 4 still made meaningful adapter hardening changes.
 - 2026-06-06T12:37:07-04:00 — Dispatched Workstream 2 pass 5 strict quiet audit to agent
   `019e9dcb-6d82-7ec0-a8fe-bde9d650908d` (`Sartre`). Ownership boundary: Workstream 2 adapters,
   source registry, related adapter tests, Workstream 2 roadmap status, and changelog. Next
   coordinator action: poll in short intervals, record result, then gate the pass 5 commit.
+- 2026-06-06T13:05:00-04:00 — Workstream 2 pass 5 strict quiet audit found and closed one
+  remaining RSS cursor/dedup gap. RSS/Atom feeds now track seen IDs and latest timestamps per feed
+  URL, and entries without a stable feed ID or link no longer produce title-derived source
+  documents. Focused adapter tests passed. Because pass 5 made meaningful adapter hardening changes,
+  another fresh-context quiet pass may still be needed before Workstream 2 is closed.
 
 ## Workstream 1: Corpus Scope And Source Taxonomy
 
@@ -329,12 +333,20 @@ missing revision-id suppression, bounded MediaWiki page walking, and determinist
 for same-timestamp releases. Workstream 3 still owns source-row catalog expansion, backfill execution,
 budgets, retries, and operator controls.
 
-Pass 4 closeout note: the historical adapter foundation is quiet after closing the final
-identifier/cursor stability issue found in fresh audit. arXiv suppresses dated entries without stable
-Atom IDs, Wikidata SPARQL resumes only when the saved query hash matches the active query, skipped
-identifier-less SPARQL rows advance the cursor without producing offset-derived source documents, and
-no adapter writes canonical facts directly. Workstream 3 still owns source-row catalog expansion,
-backfill execution, budgets, retries, and operator controls.
+Pass 4 closeout note: the fresh audit closed another identifier/cursor stability issue. arXiv
+suppresses dated entries without stable Atom IDs, Wikidata SPARQL resumes only when the saved query
+hash matches the active query, skipped identifier-less SPARQL rows advance the cursor without
+producing offset-derived source documents, and no adapter writes canonical facts directly. Because
+this pass made meaningful adapter hardening changes, the coordinator kept Workstream 2 open for
+another fresh-context audit.
+
+Pass 5 closeout note: the fresh quiet audit found one remaining RSS cursor/dedup gap and fixed it in
+scope. RSS/Atom feeds now track seen IDs and latest timestamps per feed URL instead of globally across
+all configured feeds, so a GUID collision or newer item in one feed cannot suppress a valid item from
+another feed. RSS entries without a stable feed ID or link are skipped rather than persisted with a
+title-derived identifier. No source catalog rows, backfill execution, query gates, dashboard, docs,
+marketing, domain, or direct fact-write work was added. Because this pass made meaningful adapter
+hardening changes, another fresh-context quiet pass may still be needed before Workstream 2 is closed.
 
 Suggested verification:
 

@@ -14,5 +14,7 @@
 - Hardened pass-4 quiet-check behavior so arXiv suppresses dated entries without stable Atom IDs,
   Wikidata SPARQL batches reset stale offsets when the query changes, and SPARQL rows without
   stable `item`/`qid` identifiers do not produce offset-derived source documents.
+- Hardened pass-5 RSS behavior so feed cursors track seen IDs and latest timestamps per feed URL
+  instead of globally, and title-only feed entries no longer become unstable source identifiers.
 - Added focused Python tests for adapter registration, source-policy ingestion, SSRF rejection,
   cursor behavior, and normalized `RawDocument` output.

@@ -378,20 +378,28 @@ class RssFeedAdapter:
             start_date = _parse_config_date_bound(adapter_config, "start_date")
             end_date = _parse_config_date_bound(adapter_config, "end_date", end_of_day=True)
             bounded_window = start_date is not None or end_date is not None
-            seen_ids = set(_string_list((cursor_state or {}).get("seen_ids")))
-            latest_seen = str((cursor_state or {}).get("latest_published_at", ""))
-            latest_seen_dt = _parse_dt(latest_seen)
+            seen_ids_by_feed = {
+                feed_url: set(seen_ids)
+                for feed_url, seen_ids in _string_list_map(
+                    (cursor_state or {}).get("seen_ids_by_feed", {})
+                ).items()
+            }
+            latest_seen_by_feed = _string_map(
+                (cursor_state or {}).get("latest_published_at_by_feed", {})
+            )
             emitted_ids: list[str] = []
-            emitted_dates: list[dt.datetime] = []
+            emitted_dates_by_feed: dict[str, list[dt.datetime]] = {}
             yielded = 0
             for feed_url in _string_list(adapter_config.get("feed_urls")):
                 if yielded >= max_documents:
                     break
+                seen_ids = set(seen_ids_by_feed.get(feed_url, []))
+                latest_seen_dt = _parse_dt(latest_seen_by_feed.get(feed_url, ""))
                 response_text = await _get_text(
                     client, feed_url, source_name=f"RSS feed {feed_url}"
                 )
                 for item in _feed_items(response_text):
-                    item_id = item.get("id") or item.get("link") or item.get("title")
+                    item_id = item.get("id") or item.get("link")
                     published_at = _parse_dt(item.get("published_at", ""))
                     if not item_id or item_id in seen_ids:
                         continue
@@ -403,8 +411,9 @@ class RssFeedAdapter:
                         continue
                     emitted_ids.append(item_id)
                     if published_at is not None:
-                        emitted_dates.append(published_at)
+                        emitted_dates_by_feed.setdefault(feed_url, []).append(published_at)
                     seen_ids.add(item_id)
+                    seen_ids_by_feed[feed_url] = seen_ids
                     yielded += 1
                     yield RawDocument(
                         content=json.dumps(item, ensure_ascii=False, sort_keys=True).encode(),
@@ -423,9 +432,15 @@ class RssFeedAdapter:
                     if yielded >= max_documents:
                         break
             if cursor_sink is not None:
-                cursor_sink["seen_ids"] = sorted(seen_ids)[-500:]
-                if emitted_dates:
-                    cursor_sink["latest_published_at"] = _format_dt(max(emitted_dates))
+                cursor_sink["seen_ids_by_feed"] = {
+                    feed_url: sorted(seen_ids)[-500:]
+                    for feed_url, seen_ids in seen_ids_by_feed.items()
+                    if seen_ids
+                }
+                for feed_url, emitted_dates in emitted_dates_by_feed.items():
+                    latest_seen_by_feed[feed_url] = _format_dt(max(emitted_dates)) or ""
+                if latest_seen_by_feed:
+                    cursor_sink["latest_published_at_by_feed"] = latest_seen_by_feed
         finally:
             if owns_client:
                 await client.aclose()
@@ -684,6 +699,15 @@ def _string_map(value: object) -> dict[str, str]:
     if not isinstance(value, Mapping):
         return {}
     return {str(key): str(raw_value) for key, raw_value in value.items()}
+
+
+def _string_list_map(value: object) -> dict[str, list[str]]:
+    if not isinstance(value, Mapping):
+        return {}
+    out: dict[str, list[str]] = {}
+    for key, raw_value in value.items():
+        out[str(key)] = _string_list(raw_value)
+    return out
 
 
 def _parse_date_bound(value: object, *, end_of_day: bool = False) -> dt.datetime | None:

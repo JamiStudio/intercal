@@ -373,8 +373,10 @@ async def test_rss_feed_adapter_yields_entries_dedupes_and_rejects_private(
 
     assert len(docs) == 1
     assert docs[0].external_id == "item-1"
-    assert sink["seen_ids"] == ["item-1"]
-    assert sink["latest_published_at"] == "2024-03-05T10:00:00Z"
+    assert sink["seen_ids_by_feed"] == {"https://feeds.example.com/rss.xml": ["item-1"]}
+    assert sink["latest_published_at_by_feed"] == {
+        "https://feeds.example.com/rss.xml": "2024-03-05T10:00:00Z"
+    }
 
     monkeypatch.setattr(socket, "getaddrinfo", _fake_getaddrinfo({}))
     with pytest.raises(SourceFetchError, match="SSRF"):
@@ -428,6 +430,85 @@ async def test_rss_feed_adapter_bounded_window_excludes_undated_entries(
     await client.aclose()
 
     assert [doc.external_id for doc in docs] == ["dated"]
+
+
+@pytest.mark.asyncio
+async def test_rss_feed_adapter_tracks_cursor_per_feed_and_skips_identifierless_entries(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    import httpx
+
+    monkeypatch.setattr(
+        socket,
+        "getaddrinfo",
+        _fake_getaddrinfo(
+            {
+                "feeds-a.example.com": ["93.184.216.34"],
+                "feeds-b.example.com": ["93.184.216.35"],
+            }
+        ),
+    )
+
+    feed_a = """<?xml version="1.0"?>
+    <rss version="2.0"><channel>
+      <item>
+        <guid>shared-guid</guid><title>A shared guid</title>
+        <link>https://example.com/a</link>
+        <pubDate>Tue, 05 Mar 2024 10:00:00 GMT</pubDate>
+      </item>
+      <item>
+        <title>Title Only Is Not Stable</title>
+        <pubDate>Tue, 05 Mar 2024 11:00:00 GMT</pubDate>
+      </item>
+    </channel></rss>"""
+    feed_b = """<?xml version="1.0"?>
+    <rss version="2.0"><channel>
+      <item>
+        <guid>shared-guid</guid><title>B shared guid</title>
+        <link>https://example.com/b</link>
+        <pubDate>Tue, 05 Mar 2024 09:00:00 GMT</pubDate>
+      </item>
+    </channel></rss>"""
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        if request.url.host == "feeds-a.example.com":
+            return httpx.Response(200, text=feed_a)
+        return httpx.Response(200, text=feed_b)
+
+    client = httpx.AsyncClient(transport=httpx.MockTransport(handler))
+    adapter = RssFeedAdapter()
+    sink: dict[str, object] = {}
+    docs: list[RawDocument] = []
+    async for doc in adapter.fetch(
+        adapter_config={
+            "feed_urls": [
+                "https://feeds-a.example.com/rss.xml",
+                "https://feeds-b.example.com/rss.xml",
+            ]
+        },
+        cursor_state={
+            "seen_ids_by_feed": {"https://feeds-a.example.com/rss.xml": ["old-a"]},
+            "latest_published_at_by_feed": {
+                "https://feeds-a.example.com/rss.xml": "2024-03-01T00:00:00Z",
+                "https://feeds-b.example.com/rss.xml": "2024-03-01T00:00:00Z",
+            },
+        },
+        max_documents=10,
+        http_client=client,
+        cursor_sink=sink,
+    ):
+        docs.append(doc)
+    await client.aclose()
+
+    assert [doc.url for doc in docs] == ["https://example.com/a", "https://example.com/b"]
+    assert sink["seen_ids_by_feed"] == {
+        "https://feeds-a.example.com/rss.xml": ["old-a", "shared-guid"],
+        "https://feeds-b.example.com/rss.xml": ["shared-guid"],
+    }
+    assert sink["latest_published_at_by_feed"] == {
+        "https://feeds-a.example.com/rss.xml": "2024-03-05T10:00:00Z",
+        "https://feeds-b.example.com/rss.xml": "2024-03-05T09:00:00Z",
+    }
 
 
 @pytest.mark.asyncio

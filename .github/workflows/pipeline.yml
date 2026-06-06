@@ -102,7 +102,9 @@ jobs:
       - uses: actions/checkout@v4
 
       - name: Setup uv
-        uses: astral-sh/setup-uv@v8
+        # setup-uv stopped publishing a moving major tag at v8 (immutable/secure
+        # releases); pin an exact version. Latest: v8.2.0 (2026-06-03).
+        uses: astral-sh/setup-uv@v8.2.0
         with:
           enable-cache: true
 

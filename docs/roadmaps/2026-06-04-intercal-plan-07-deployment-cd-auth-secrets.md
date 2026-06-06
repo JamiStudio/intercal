@@ -150,7 +150,8 @@ Implementation tasks:
 - [x] Rewrote `.github/workflows/pipeline.yml` to drive the real orchestrator (`uv run
       intercal-pipeline run-all` / `run --source-id`), not the old per-service stub. Schedule **enabled**
       `cron: "17 */6 * * *"` (6-hourly per `resource-budget.md` / `INGEST_CRON`; minute offset off `:00`
-      to dodge top-of-hour drops). `setup-uv@v8` + `uv sync --all-packages --frozen`. All app-runtime
+      to dodge top-of-hour drops). `setup-uv@v8.2.0` (pinned — v8+ drops the moving major tag) +
+      `uv sync --all-packages --frozen`. All app-runtime
       secrets wired by NAME from the W1 fan-out; Vertex ADC built from `GOOGLE_SERVICE_ACCOUNT_KEY`
       (SA JSON → `chmod 600` `$RUNNER_TEMP` file → `GOOGLE_APPLICATION_CREDENTIALS`), Gemini fallback via
       `GEMINI_API_KEY`. Budget knobs overridable via repo `vars.*` (defaults match `resource-budget.md`).

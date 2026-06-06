@@ -22,7 +22,8 @@ import os
 from typing import TYPE_CHECKING
 
 from intercal_shared.config import Settings
-from intercal_shared.ports.llm import InMemoryRequestBudget, RequestBudget
+from intercal_shared.llm_runtime import FallbackLlm, UsageRecordingLlm, llm_provider_budget_states
+from intercal_shared.ports.llm import InMemoryRequestBudget, LlmPort, RequestBudget
 
 if TYPE_CHECKING:
     from intercal_shared.adapters.embeddings_local import LocalEmbeddingsAdapter
@@ -90,6 +91,8 @@ def make_request_budget(cfg: Settings) -> RequestBudget:
 def make_llm(
     cfg: Settings,
     budget: RequestBudget | None = None,
+    *,
+    provider: str | None = None,
 ) -> GeminiLlmAdapter | GroqLlmAdapter | AnthropicLlmAdapter | OpenAILlmAdapter:
     """Return the configured LLM adapter, wired with port-policy knobs.
 
@@ -98,7 +101,7 @@ def make_llm(
     optional :class:`RequestBudget` (defaults to one built from
     ``LLM_DAILY_REQUEST_BUDGET``) so the daily cap is enforced at the port boundary.
 
-    Provider selection via ``LLM_PROVIDER``:
+    Provider selection via ``provider`` (or ``LLM_PROVIDER`` when omitted):
 
     - ``vertex`` — Vertex AI mode; resolves project from ``VERTEX_PROJECT`` (or
       ``GCLOUD_PROJECT_ID``) and ADC.  If ``GOOGLE_APPLICATION_CREDENTIALS`` is not
@@ -110,13 +113,14 @@ def make_llm(
     """
     if budget is None:
         budget = make_request_budget(cfg)
+    selected_provider = provider or cfg.llm_provider
     common = {
         "default_max_tokens": cfg.llm_max_output_tokens,
         "timeout": cfg.llm_timeout_seconds,
         "budget": budget,
     }
 
-    if cfg.llm_provider == "vertex":
+    if selected_provider == "vertex":
         from intercal_shared.adapters.llm_gemini import GeminiLlmAdapter
 
         # Promote a SA-key path into the SDK's ADC env var if the canonical one
@@ -132,7 +136,7 @@ def make_llm(
             location=cfg.vertex_location,
             **common,  # type: ignore[arg-type]
         )
-    if cfg.llm_provider == "gemini":
+    if selected_provider == "gemini":
         from intercal_shared.adapters.llm_gemini import GeminiLlmAdapter
 
         return GeminiLlmAdapter(
@@ -140,13 +144,15 @@ def make_llm(
             model=cfg.llm_model,
             **common,  # type: ignore[arg-type]
         )
-    if cfg.llm_provider == "groq":
+    if selected_provider == "groq":
         from intercal_shared.adapters.llm_groq import GroqLlmAdapter
 
         return GroqLlmAdapter(
-            api_key=cfg.groq_api_key or "", model=cfg.llm_model, **common  # type: ignore[arg-type]
+            api_key=cfg.groq_api_key or "",
+            model=cfg.llm_model,
+            **common,  # type: ignore[arg-type]
         )
-    if cfg.llm_provider == "anthropic":
+    if selected_provider == "anthropic":
         from intercal_shared.adapters.llm_anthropic import AnthropicLlmAdapter
 
         return AnthropicLlmAdapter(
@@ -154,7 +160,7 @@ def make_llm(
             model=cfg.llm_model,
             **common,  # type: ignore[arg-type]
         )
-    if cfg.llm_provider == "openai":
+    if selected_provider == "openai":
         from intercal_shared.adapters.llm_openai import OpenAILlmAdapter
 
         return OpenAILlmAdapter(
@@ -162,7 +168,80 @@ def make_llm(
             model=cfg.llm_model,
             **common,  # type: ignore[arg-type]
         )
-    raise ValueError(f"Unsupported llm_provider: {cfg.llm_provider!r}")
+    raise ValueError(f"Unsupported llm_provider: {selected_provider!r}")
+
+
+async def make_budgeted_llm(cfg: Settings, *, pool: object) -> LlmPort:
+    """Return the runtime LLM with W8 budget fallback + usage recording.
+
+    This is the worker-path constructor.  It shares one request budget across
+    providers, prefers ``LLM_PRIMARY`` (default Vertex), falls back to Gemini
+    when the primary is unavailable or already at a Plan 04 warning threshold,
+    and appends real provider-usage observations after successful calls.
+    """
+    budget = make_request_budget(cfg)
+    budget_states = await llm_provider_budget_states(pool=pool)
+    providers = llm_provider_order(cfg, budget_states=budget_states)
+    adapters: list[tuple[str, LlmPort]] = []
+
+    for name in providers:
+        try:
+            adapter = make_llm(cfg, budget=budget, provider=name)
+        except Exception as exc:
+            if name == providers[-1]:
+                raise
+            _log.warning(
+                "LLM provider=%s could not be constructed (%s); trying fallback provider.",
+                name,
+                exc,
+            )
+            continue
+        adapters.append((name, UsageRecordingLlm(inner=adapter, provider=name, pool=pool)))
+
+    if not adapters:
+        raise ValueError("No configured LLM provider could be constructed.")
+    if len(adapters) == 1:
+        return adapters[0][1]
+    return FallbackLlm(adapters)
+
+
+def llm_provider_order(cfg: Settings, *, budget_states: dict[str, str]) -> list[str]:
+    """Provider order for W8 runtime routing."""
+    primary = cfg.llm_primary
+    order = [primary]
+    if primary != "gemini":
+        order.append("gemini")
+
+    deduped: list[str] = []
+    for provider in order:
+        if provider not in deduped:
+            deduped.append(provider)
+
+    exceeded = [provider for provider in deduped if budget_states.get(provider) == "exceeded"]
+    warning = [provider for provider in deduped if budget_states.get(provider) == "warning"]
+    unavailable_states = {"warning", "exceeded"}
+    available = [
+        provider for provider in deduped if budget_states.get(provider) not in unavailable_states
+    ]
+    if warning:
+        _log.warning(
+            "LLM provider(s) at warning budget state; deprioritizing: %s",
+            ", ".join(warning),
+        )
+    if exceeded:
+        _log.warning(
+            "LLM provider(s) at exceeded budget state; excluding from routing: %s",
+            ", ".join(exceeded),
+        )
+    routed = available + warning
+    if not routed:
+        from intercal_shared.ports.llm import LlmBudgetExceededError
+
+        raise LlmBudgetExceededError(
+            "All configured LLM providers are at exceeded budget state in "
+            "observability_provider_consumption."
+        )
+    return routed
 
 
 def make_queue(

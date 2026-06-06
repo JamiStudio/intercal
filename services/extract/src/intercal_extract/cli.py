@@ -48,12 +48,12 @@ def extract_mentions_cmd(
 
     async def _run() -> None:
         from intercal_shared.db import get_pool
-        from intercal_shared.factory import make_llm
+        from intercal_shared.factory import make_budgeted_llm
 
         from intercal_extract.jobs import extract_mentions
 
         pool = await get_pool(cfg.database_url)
-        llm = make_llm(cfg)
+        llm = await make_budgeted_llm(cfg, pool=pool)
         counters = await extract_mentions(document_id=document_id, pool=pool, llm=llm)
         _log.info("extract-mentions complete: %s", counters)
 
@@ -87,12 +87,12 @@ def extract_claims_cmd(
 
     async def _run() -> None:
         from intercal_shared.db import get_pool
-        from intercal_shared.factory import make_llm
+        from intercal_shared.factory import make_budgeted_llm
 
         from intercal_extract.jobs import extract_claims
 
         pool = await get_pool(cfg.database_url)
-        llm = make_llm(cfg)
+        llm = await make_budgeted_llm(cfg, pool=pool)
         counters = await extract_claims(
             document_id=document_id, pool=pool, llm=llm, max_chunks=max_chunks
         )
@@ -108,9 +108,9 @@ def embed_chunks_cmd(
         ..., "--document-id", help="UUID of the normalised source document."
     ),
     batch_size: int = typer.Option(
-        64,
+        0,
         "--batch-size",
-        help="Number of chunks to embed in each adapter call (default 64).",
+        help="Number of chunks to embed per adapter call. 0 = EMBEDDINGS_BATCH_SIZE.",
     ),
     force: bool = typer.Option(
         False,
@@ -136,11 +136,12 @@ def embed_chunks_cmd(
 
         pool = await get_pool(cfg.database_url)
         emb = make_embeddings(cfg)
+        effective_batch_size = batch_size if batch_size > 0 else cfg.embeddings_batch_size
         counters = await embed_chunks(
             document_id=document_id,
             pool=pool,
             embeddings=emb,
-            batch_size=batch_size,
+            batch_size=effective_batch_size,
             force=force,
         )
         _log.info("embed-chunks complete: %s", counters)
@@ -155,9 +156,9 @@ def embed_claims_cmd(
         ..., "--document-id", help="UUID of the source document whose claims to embed."
     ),
     batch_size: int = typer.Option(
-        64,
+        0,
         "--batch-size",
-        help="Number of claims to embed in each adapter call (default 64).",
+        help="Number of claims to embed per adapter call. 0 = EMBEDDINGS_BATCH_SIZE.",
     ),
     force: bool = typer.Option(
         False,
@@ -183,11 +184,12 @@ def embed_claims_cmd(
 
         pool = await get_pool(cfg.database_url)
         emb = make_embeddings(cfg)
+        effective_batch_size = batch_size if batch_size > 0 else cfg.embeddings_batch_size
         counters = await embed_claims(
             document_id=document_id,
             pool=pool,
             embeddings=emb,
-            batch_size=batch_size,
+            batch_size=effective_batch_size,
             force=force,
         )
         _log.info("embed-claims complete: %s", counters)

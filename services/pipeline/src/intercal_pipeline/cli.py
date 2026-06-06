@@ -92,14 +92,15 @@ def run_cmd(
 
     async def _run() -> None:
         from intercal_shared.db import close_all_pools, get_pool
-        from intercal_shared.factory import make_embeddings, make_llm, make_storage
+        from intercal_shared.factory import make_budgeted_llm, make_embeddings, make_storage
 
         from intercal_pipeline.run import run_pipeline
 
         pool = await get_pool(cfg.database_url)
         storage = make_storage(cfg)
-        llm = make_llm(cfg)
+        llm = await make_budgeted_llm(cfg, pool=pool)
         embeddings = make_embeddings(cfg)
+        effective_extract_force = extract_force or not cfg.extract_only_changed
 
         health = await run_pipeline(
             source_id=source_id,
@@ -109,9 +110,10 @@ def run_cmd(
             embeddings=embeddings,
             max_documents=effective_max,
             max_chunks_per_doc=max_chunks,
+            embed_batch_size=cfg.embeddings_batch_size,
             use_embeddings_for_resolve=not no_embeddings,
             use_embeddings_for_link=not no_embeddings,
-            extract_force=extract_force,
+            extract_force=effective_extract_force,
         )
 
         await close_all_pools()
@@ -141,6 +143,14 @@ def run_all_cmd(
         "--no-embeddings",
         help="Skip embedding-based resolution and linking.",
     ),
+    extract_force: bool = typer.Option(
+        False,
+        "--extract-force",
+        help=(
+            "Re-extract already-processed documents. Default honors "
+            "EXTRACT_ONLY_CHANGED=true and skips unchanged documents."
+        ),
+    ),
 ) -> None:
     """Run the full pipeline for ALL active, non-paused sources.
 
@@ -155,14 +165,15 @@ def run_all_cmd(
     async def _run() -> None:
 
         from intercal_shared.db import close_all_pools, get_pool
-        from intercal_shared.factory import make_embeddings, make_llm, make_storage
+        from intercal_shared.factory import make_budgeted_llm, make_embeddings, make_storage
 
         from intercal_pipeline.run import run_pipeline
 
         pool = await get_pool(cfg.database_url)
         storage = make_storage(cfg)
-        llm = make_llm(cfg)
+        llm = await make_budgeted_llm(cfg, pool=pool)
         embeddings = make_embeddings(cfg)
+        effective_extract_force = extract_force or not cfg.extract_only_changed
 
         active_sources: list[dict[str, object]] = [
             {"id": str(r["id"]), "slug": r["slug"]}
@@ -192,8 +203,10 @@ def run_all_cmd(
                     embeddings=embeddings,
                     max_documents=effective_max,
                     max_chunks_per_doc=max_chunks,
+                    embed_batch_size=cfg.embeddings_batch_size,
                     use_embeddings_for_resolve=not no_embeddings,
                     use_embeddings_for_link=not no_embeddings,
+                    extract_force=effective_extract_force,
                 )
                 all_health.append(health.to_dict())
                 if health.status == "failed":

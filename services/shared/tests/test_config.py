@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import pytest
 from intercal_shared.config import Settings
 
 
@@ -56,3 +57,16 @@ def test_settings_accepts_all_embeddings_providers() -> None:
     for provider in ("local", "openai"):
         cfg = _isolated_settings(embeddings_provider=provider)
         assert cfg.embeddings_provider == provider
+
+
+def test_budget_knobs_validate() -> None:
+    import pydantic
+
+    with pytest.raises(pydantic.ValidationError, match="LLM_DAILY_REQUEST_BUDGET"):
+        _isolated_settings(llm_daily_request_budget=-1)
+    with pytest.raises(pydantic.ValidationError, match="INGEST_MAX_DOCS_PER_RUN"):
+        _isolated_settings(ingest_max_docs_per_run=-1)
+    with pytest.raises(pydantic.ValidationError, match="EMBEDDINGS_BATCH_SIZE"):
+        _isolated_settings(embeddings_batch_size=0)
+    with pytest.raises(pydantic.ValidationError, match="LLM_PRIMARY"):
+        _isolated_settings(llm_primary="bogus")

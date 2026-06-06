@@ -55,7 +55,12 @@ EMBEDDINGS_BATCH_SIZE=64         # local, free; batch for throughput
 QUEUE_PROVIDER=redis             # switch to 'postgres' (pgmq) to spare Upstash commands
 ```
 
-(These belong in `services/shared` config and the worker CLIs; see Plan 02 / Plan 07.)
+These are enforced in `services/shared` config plus the worker CLIs. The worker runtime builds LLMs
+through the budgeted shared factory: one daily request budget is shared across provider attempts,
+`LLM_PRIMARY=vertex` prefers Vertex and falls back to Gemini on provider auth/quota/timeout failures,
+`LLM_MAX_OUTPUT_TOKENS` caps each LLM call, and successful provider responses append real request/token
+measurements to `provider_usage_events` when the observability migration is present. Unknown token
+counts remain unavailable; they are not zero-filled.
 
 ## Monitoring (owned by Plan 04 observability)
 
@@ -67,8 +72,10 @@ QUEUE_PROVIDER=redis             # switch to 'postgres' (pgmq) to spare Upstash 
   Vercel function GB-hours, and Cloud Run request/compute usage.
 - Missing provider telemetry is reported as `unavailable`, not zero. Operators must import real
   provider measurements before treating a budget row as observed.
-- Alert thresholds at ~70% of each binding allowance; auto-degrade LLM to fallback / pause
-  non-essential ingestion when a budget nears its cap.
+- Alert thresholds at ~70% of each binding allowance. The worker runtime reads
+  `observability_provider_consumption` for Vertex/Gemini daily-request rows: `warning` providers are
+  deprioritized behind fallback, and `exceeded` providers are excluded. If the view is not migrated or
+  has no real usage events yet, the local `LLM_DAILY_REQUEST_BUDGET` remains the hard guard.
 
 ## Scale triggers (when to spend)
 

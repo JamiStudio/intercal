@@ -213,6 +213,24 @@ class Settings(BaseSettings):
             raise ValueError(
                 f"LLM_TIMEOUT_SECONDS must be positive, got {self.llm_timeout_seconds}."
             )
+        if self.llm_daily_request_budget < 0:
+            raise ValueError(
+                "LLM_DAILY_REQUEST_BUDGET must be >= 0 "
+                f"(0 disables the cap), got {self.llm_daily_request_budget}."
+            )
+        if self.ingest_max_docs_per_run < 0:
+            raise ValueError(
+                f"INGEST_MAX_DOCS_PER_RUN must be >= 0, got {self.ingest_max_docs_per_run}."
+            )
+        if self.embeddings_batch_size <= 0:
+            raise ValueError(
+                f"EMBEDDINGS_BATCH_SIZE must be positive, got {self.embeddings_batch_size}."
+            )
+        if self.llm_primary not in {"vertex", "gemini", "groq", "anthropic", "openai"}:
+            raise ValueError(
+                "LLM_PRIMARY must be one of vertex, gemini, groq, anthropic, openai; "
+                f"got {self.llm_primary!r}."
+            )
         return self
 
 

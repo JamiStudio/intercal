@@ -361,16 +361,34 @@ Exit criteria:
 
 Goal: The product governs its own spend per `resource-budget.md`.
 
+Orchestrator checkpoint (2026-06-06T08:16Z): W8 P1 dispatched as agent
+`019e9c01-7b62-7b73-a9b7-2ad25c69dbc3`. Ownership: Plan07 W8 runtime budget enforcement and cost
+monitoring only; Plan04 W7 deployment docs may run in parallel. Next coordinator action: poll to
+terminal, checkpoint result, then dispatch W8 P2.
+
+P1 return checkpoint (2026-06-06): W8 P1 implemented runtime budget enforcement in the shared worker
+path. `services/shared` now validates the budget knobs, shares one daily LLM request budget across
+primary/fallback attempts, prefers `LLM_PRIMARY=vertex` with Gemini fallback, records real successful
+LLM request/token measurements into `provider_usage_events`, and reads
+`observability_provider_consumption` to deprioritize warning providers / exclude exceeded providers.
+Pipeline and extract/synthesize CLIs now use the budgeted LLM constructor, honor
+`EXTRACT_ONLY_CHANGED`, pass `EMBEDDINGS_BATCH_SIZE`, and construct the Postgres queue adapter with
+the DB pool when `QUEUE_PROVIDER=postgres`. Verification: focused W8/shared tests, Python lint,
+Python typecheck (0 errors; existing warnings), and CLI help checks passed. No paid provider calls or
+live DB writes were run in this P1 pass.
+
 Implementation tasks:
 
-- [ ] Implement the throttle knobs (`LLM_DAILY_REQUEST_BUDGET`, `INGEST_*`, `EXTRACT_ONLY_CHANGED`,
+- [x] Implement the throttle knobs (`LLM_DAILY_REQUEST_BUDGET`, `INGEST_*`, `EXTRACT_ONLY_CHANGED`,
       `QUEUE_PROVIDER` switch) in `services/shared` config + worker CLIs.
-- [ ] LLM port: enforce daily budget, prefer Vertex → Gemini fallback, cap tokens/doc.
-- [ ] Emit per-provider consumption metrics for Plan 04 cost cards; auto-degrade at ~70% thresholds.
+- [x] LLM port: enforce daily budget, prefer Vertex → Gemini fallback, cap tokens/doc.
+- [x] Emit per-provider consumption metrics for Plan 04 cost cards; auto-degrade at ~70% thresholds.
 
 Exit criteria:
 
-- [ ] Pipeline honors cadence + daily LLM budget; consumption is observable; budgets are not exceeded.
+- [~] Pipeline honors cadence + daily LLM budget; consumption is observable; budgets are not exceeded.
+      Code path and fixture tests are green; live provider-usage emission was not exercised because
+      this P1 pass avoided paid provider calls and did not write to a live DB.
 
 ## Final Verification And Closeout
 

@@ -67,6 +67,27 @@ def test_make_scheduler_local() -> None:
     assert scheduler is not None
 
 
+def test_llm_provider_order_prefers_vertex_then_gemini() -> None:
+    from intercal_shared.factory import llm_provider_order
+
+    cfg = _isolated_settings(llm_primary="vertex")
+    assert llm_provider_order(cfg, budget_states={}) == ["vertex", "gemini"]
+
+
+def test_llm_provider_order_excludes_exceeded_and_deprioritizes_warning() -> None:
+    from intercal_shared.factory import llm_provider_order
+    from intercal_shared.ports.llm import LlmBudgetExceededError
+
+    cfg = _isolated_settings(llm_primary="vertex")
+    assert llm_provider_order(cfg, budget_states={"vertex": "warning"}) == [
+        "gemini",
+        "vertex",
+    ]
+    assert llm_provider_order(cfg, budget_states={"vertex": "exceeded"}) == ["gemini"]
+    with pytest.raises(LlmBudgetExceededError):
+        llm_provider_order(cfg, budget_states={"vertex": "exceeded", "gemini": "exceeded"})
+
+
 @pytest.mark.asyncio
 async def test_scheduler_local_runs_job() -> None:
     """LocalSchedulerAdapter should execute an async job directly."""

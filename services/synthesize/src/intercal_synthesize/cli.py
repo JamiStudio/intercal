@@ -47,12 +47,12 @@ def build_digest_cmd(
 
     async def _run() -> None:
         from intercal_shared.db import get_pool
-        from intercal_shared.factory import make_llm, make_storage
+        from intercal_shared.factory import make_budgeted_llm, make_storage
 
         from intercal_synthesize.jobs import build_digest
 
         pool = await get_pool(cfg.database_url)
-        llm = make_llm(cfg)
+        llm = await make_budgeted_llm(cfg, pool=pool)
         storage = make_storage(cfg)
         result = await build_digest(
             topic_or_entity_id=target_id,
@@ -109,7 +109,7 @@ def notify_subscribers_cmd(
         from intercal_synthesize.jobs import notify_subscribers
 
         pool = await get_pool(cfg.database_url)
-        queue = make_queue(cfg)
+        queue = make_queue(cfg, pool=pool)
         count = await notify_subscribers(
             entity_or_topic_id=target_id,
             pool=pool,

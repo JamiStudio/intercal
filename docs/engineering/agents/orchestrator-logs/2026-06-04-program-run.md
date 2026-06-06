@@ -72,7 +72,54 @@ Plan 02 dated plan flagged for retirement to `docs/_legacy/roadmaps/` — do at 
 Plan 03 workstreams: W1 query layer · W2 REST · W3 MCP · W4 SDK · W5 digest/token-budget (getDelta body) · W6 claim verification (verifyClaim body) · W7 freshness/coverage · W8 agent fixture.
 Much of W1–W3 already scaffolded (4/6 query fns live; REST+MCP wired). Key new work: getDelta + verifyClaim bodies, MCP mount at `/api/mcp` (Plan 07 W2), SDK methods, fixture. GAP-B (claims recordedAt) already fixed at 92ad2b0.
 
-| t35 | 03/W1 | P1 | Sonnet | — | dispatched | — | — | gate on commit → P2 Opus |
+| t35 | 03/W1 | P1 | Sonnet | aefac10cbd04d2708 | returned OK; merged-id→resolve-to-survivor; fixed mapRelationship status bug; live REST proof; 10 tests | d4f0567 | 6f +221/-17 | dispatch W1 P2 (Opus) |
+| t36 | 03/W1 | P2 | Opus | a3a3be31eaa6bd15a | returned OK; fixed contract-divergence (mapEntity externalIds.url); consumer parity confirmed; resolveIfMerged verified; contracts:check clean; 12 tests | b31dbba | ~4f +75 | real fix → P3 confirm-quiet (Sonnet) |
+| t37 | 03/W1 | P3 | Sonnet | abd648f31e00c5398 | QUIET → **W1 CLOSED** (mappers contract-exact, resolveIfMerged on all id paths, parity, contracts clean) | (none) | 0 | parallel W2+W3 |
+| t38 | 03/W2 | P1 | Sonnet | a7518bbdb1d604c7b | INTERRUPTED (session limit, Sonnet — limits are account-wide throughput, not model-specific); WIP: app.ts mod + app.test.ts new | (none) | WIP | resume: finish+commit |
+| t39 | 03/W3 | P1 | — | — | NOT actually dispatched (only W2 call sent); deferred until W2 lands | — | — | dispatch after W2 |
+| note | GAP-B | — | — | orchestrator | chip resurfaced but STALE — already fixed at 92ad2b0 (claims created_at/updated_at, orderBy created_at). No action. | — | — | — |
+| t40 | 03/W2 | P1b | Sonnet | — | REJECTED by user (model-policy change → all-Opus) | — | — | re-dispatch on Opus |
+| t41 | 03/W2 | P1b | Opus | a4c6d7cb3a4f6b5a2 | returned OK; fixed 2 prod defects (sources 500, unknown-param 200), error taxonomy+CORS, 37 tests | eb7edcd | ~5f +535/-31 | dispatch W2 P2 (Opus) |
+| t42 | 03/W2 | P2 | Opus | adac36f5db614154e | returned OK; fixed mounted-prefix text/plain-404 leak (scoped /v1/* JSON catch-all); 40 tests; deployed-404 fix pending Vercel redeploy | 9ae1cc7 | 4f +105/-2 | real fix → P3 confirm-quiet |
+| t43 | 03/W3 | P1 | — | — | CORRECTION: NOT actually dispatched (call never sent, logged in error twice) | — | — | dispatch now |
+| t44 | 03/W2 | P3 | Opus | a8455717ff14b5380 | QUIET → **W2 CLOSED** (404-fix propagated to prod; /api/mcp non-intercept confirmed) | (none) | 0 | dispatch W3 |
+| t45 | 03/W3 | P1 | Opus | ad87a2ec5d07878af | returned OK; MCP hardened + MOUNTED /api/mcp (Plan07 W2 too); LIVE Streamable-HTTP init+tools/list+get_entity+search_evidence on prod Neon; SDK 1.29.0 WebStandard transport, stateless Node runtime; 9 mcp tests | 7df103a | ~505 LOC | dispatch W3 P2 (Opus); verify live Vercel |
+| t46 | 03/W3 | P2 | Opus | ad1aec87c130fa62d | non-terminal return (parked on deploy wait) BUT committed deploy-determinism fix; ORCHESTRATOR-VERIFIED live: deployed /api/mcp initialize+tools/list(6)+get_entity rust real data on prod | aa5f472 | deploy fix | real fix → P3 confirm-quiet (serverless pool) |
+| t47 | 03/W3 | P3 | Opus | ae91853c468a34aa6 | QUIET → **W3 CLOSED + Plan07-W2 CLOSED** (pool=safe singleton, stateless, parity, deployed live w/ real data) | (none) | 0 | parallel W4+W5 |
+| t48 | 03/W4 | P1 | Opus | a9ce0cfae8f5e6559 | returned OK; full typed SDK (6 methods, error model, fixture+live tests, delta/verify→typed 501); 19 tests | 9079b55 | ~6f +778/-78 | needs P2 |
+| t49 | 03/W5 | P1 | Opus | ae696af1efbcd0365 | returned OK; getDelta = deterministic fully-cited token-bounded digest; LIVE prod 12 cited/315tok≤600, clamp/trim proven, empty=no-fab; retargeted stale delta-501 tests; 22 core tests | aa93079 | ~8f +760/-83 | needs P2 |
+| t50 | 03/W5 | P2 | Opus | a3cdca8b394cd7e4c | returned OK; CRITICAL: pass1 missed fact_version changes (canonical change unit); now windows fact_versions on recorded_at + supersession classification; token math hardened; live supersession-across-cutoff proof; 26 core tests | 8991793 | 5f +349/-43 | critical fix → P3 confirm-quiet |
+| t51 | 03/W5 | P3 | Opus | ae90d8d9a7a5283be | returned OK; fixed supersession-vs-new MISclassification across cutoff (priorVersionSubjectIds signal); live-proven; deployed /api/v1/delta real data; 28 core tests | cd104ae | ~3f +97 | another bitemporal fix → P4 confirm-quiet |
+| t52 | 03/W5 | P4 | Opus | a0f3b0b2fb971f4f5 | returned OK; fixed until-clamp wrongly constraining independent fact-version axis (bounded-case drop); live 0→1; 28 core tests | 819dfd1 | 1f ~15 LOC | 4th bitemporal fix → P5 confirm-quiet+test-matrix |
+| t53 | 03/W5 | P5 | Opus | a7cb27dfe91277375 | QUIET on logic + added bitemporal test matrix (16→25); live boundary µs-verified → **W5 CLOSED** | 6adddc6 | 1f +177 (tests) | back to W4 P2 |
+| t54 | 03/W4 | P2 | Opus | ad31fab6d5558c2fd | QUIET → **W4 CLOSED** (SDK contract-aligned, error model, live getDelta real data + verify 501; 19 tests) | (none) | 0 | begin W6 |
+| t55 | 03/W6 | P1 | Opus | aee978196298e6be6 | returned OK; verifyClaim = deterministic cited evidence-match+contradiction, point-in-time, token-budgeted; LIVE supported/unverified/as_of cases; 50 core tests | 190a496 | ~8f +913/-96 | P2: scrutinize false-positive support |
+| t56 | 03/W6 | P2 | Opus | af4e9b38cc3e68237 | returned OK; CONFIRMED false-positive-support defect (lexical overlap→false supported, proven live role-swap); fixed (strong symmetric coverage≥0.85+Jaccard≥0.5 for supported, else partially_supported); +5 adversarial tests; 55 tests | 49bf87a | 4f +256/-6 | integrity fix → P3 confirm-quiet |
+| t57 | 03/W6 | P3 | Opus | a3fe78cb444234d90 | returned OK; fixed tokenizer edge-punctuation artifact (verbatim restatement → supported); citation integrity 0 dangling/114 claims; +2 tests; 57 core | fb9ac4e | ~2f +44 | minor safe-dir fix → P4 confirm-quiet |
+| t58 | 03/W6 | P4 | Opus | a96a54e955535a231 | QUIET → **W6 CLOSED** (adversarial-safe, deployed fixed verify live; 57 core tests) | (none) | 0 | begin W7 |
+| t59 | 03/W7 | P1 | Opus | acb6be278c2b0ef2a | returned OK; getFreshness now fills coverage field (freshness+coverage, no contract change); LIVE covered→real, unknown→no-data; 69 core tests | ec7caaf | 5f | dispatch W7 P2; assess coverage-metric soundness |
+| t60 | 03/W7 | P2 | Opus | ad91b0ea5a53e6793 | returned OK; REDEFINED coverage (pass1's metric dishonest — all 52 entities=0.333; now evidence-depth, corpus-invariant); staleness justified vs cadence; live-verified; 71 core tests | b50a5a2 | 5f +274/-92 | honesty fix → P3 confirm-quiet |
+| t61 | 03/W7 | P3 | Opus | a0d5a2e62d5a18303 | returned OK; fixed provenance gap (coverage read denormalized source_document_ids not canonical claim_evidence); live 114/114 identical but now authoritative; 71 core tests | 287bed4 | ~3f +20net | provenance fix → P4 confirm-quiet |
+| t62 | 03/W7 | P4 | Opus | a61f99d022c0ec1e6 | QUIET → **W7 CLOSED** (evidence-depth coverage canonical, recency, honest gaps, contract-exact; 71 core tests) | (none) | 0 | begin W8 |
+| t63 | 03/W8 | P1 | Opus | ae448aef15f194139 | returned OK; agent-fixture harness: 6 tools × (MCP client + SDK/REST), cited/conf/budget asserts, cross-path byte-equiv, env-gated LIVE; acceptance gate PROVEN live; 21 mcp tests | 6f7b630 | ~8f +903/-32 | dispatch W8 P2 |
+| t64 | 03/W8 | P2 | Opus | ad61818be3965b912 | QUIET → **W8 CLOSED; PLAN 03 / PHASE C COMPLETE** (live acceptance gate 23/23 both paths) | (none) | 0 | open Phase D |
+
+### ✅ PHASE C COMPLETE — Plan 03 (W1–W8) + Plan 07 W2 (MCP on Vercel). getDelta + verifyClaim live & cited/budgeted; MCP at /api/mcp; SDK; freshness/coverage. Plan 03 flagged for retirement (do at Phase F).
+
+## Phase D — Plan 04 (operations & trust) + Plan 07 (remaining: W1 secrets, W3/W4 worker CD, W5 API keys, W6 MCP OAuth, W7 backups, W8 budget)
+
+Plan 04 WS: W1 auth+rate-limits · W2 source policy/SSRF · W3 audit events · W4 feedback/review · W5 subscriptions · W6 observability · W7 deployment paths+backups · W8 account/CLI runbook.
+Plan 07 remaining: W1 secret fan-out (prereq for W3/W4/W5/W6/W7/W8; scripts/ops/ absent) · W3 Actions scheduled CD · W4 Cloud Run Jobs · W5 REST API keys · W6 MCP OAuth 2.1 · W7 backups/restore · W8 budget enforcement.
+Sequence: Plan 07 W1 (secrets) first → then auth cluster (Plan04 W1 + Plan07 W5/W6) ∥ worker CD (Plan07 W3/W4) → Plan04 W2–W8 → Plan07 W7/W8.
+
+| t65 | 07/W1 | P1 | Opus | — | dispatched (secret management & fan-out; scripts/ops/) | — | — | gate → P2 |
+
+**Carry-forward (later seam, Plan 05/enhancement):** verifyClaim role-swap calibration limit — a token-identical role-swap with a near-identical 2nd candidate can grade `supported`; closing needs semantic parsing behind `LlmPort`. Documented, not a blocker.
+
+**Carry-forward (hardening):** MCP SDK `tools/call` doesn't validate args vs inputSchema → missing required arg = internal_error not invalid_request. Fold into a later hardening pass (W5/W6 surface or Plan 05).
+**Phase C progress:** W1✅ W2✅ W3✅(+MCP live) | remaining: W4 SDK, W5 getDelta, W6 verifyClaim, W7 freshness/coverage, W8 fixture.
+
+**Parallel note:** W2 (packages/api) and W3 (packages/mcp-server) independent, both on completed W1 query layer. W3 dispatch also covers Plan 07 W2 (mount MCP at dashboard `/api/mcp`).
 
 **MODEL POLICY ADAPTATION:** Opus session limits hit 3× (1am/6:20am/12pm resets) = real throughput blocker. Confirm-quiet passes now on Sonnet; reserve Opus for primary defect-finding pass-2 audits, fall back to Sonnet if Opus rate-limited. Deviation logged per dispatch.
 
@@ -98,5 +145,7 @@ Much of W1–W3 already scaffolded (4/6 query fns live; REST+MCP wired). Key new
   incremental history. MUST NOT be done mid-stream — live Neon branches + migration runner depend on the
   incremental files. Schedule as an explicit Plan 05 workstream task. Verify the canonical set migrates a
   fresh DB to byte-identical schema vs the incremental chain before retiring the old files.
-- **Model policy:** user asked to prefer Opus (2026-06-05). Opus session limits reset ~12pm; using Opus for
-  primary + high-judgment passes, Sonnet only as fallback on a hard Opus rate-limit wall.
+- **Model policy (UPDATED 2026-06-05, user directive):** **ALL passes = Opus 4.8** (pass 1, audits, confirm-quiet).
+  User observed Sonnet producing more failed commands/issues; Opus runs clean and catches the real defects.
+  Session-limit pauses are account-wide throughput (hit both models) — resume from repo state, no work lost.
+  Supersedes goal.md's Sonnet-p1/Opus-p2 default per explicit user instruction.

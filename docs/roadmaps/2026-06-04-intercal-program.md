@@ -1,7 +1,7 @@
 # Intercal Program — End-to-End Build
 
 Date: 2026-06-04
-Status: [~] Active — Phases A–B complete and live (real data on live API); Phases C–F sequenced
+Status: [~] Active — Phases A–C complete and live (real data + cited/budgeted deltas/verify on live API/MCP); Phases D–F sequenced
 Owner: Program orchestration
 Source: `docs/research/2026-05-21-intercal-foundation-report.md`, `docs/research/2026-06-04-intercal-revisit-audit-and-dev-environment.md`, decisions `0001`/`0002`
 
@@ -39,7 +39,7 @@ direct, Vercel app, GCloud workers) as each phase begins.
 ```
 A ✅ Foundation & live rails
       └─> B ✅ Real knowledge in (pipeline live; worker CD = Plan 07 W3/W4 pending)
-              └─> C  Agent surface depth (deltas, verify, digests, MCP on /api/mcp)
+              └─> C ✅ Agent surface depth (deltas, verify, digests, MCP on /api/mcp — LIVE)
                       ├─> D  Trust & operations (auth, limits, policy, subs, audit, deploy/CD)
                       │        └─> E  Interactive experience (graph/timeline/briefing/operator)
                       └────────────────┘
@@ -66,8 +66,12 @@ Key deliverables:
 Acceptance gate: the fixture heartbeat (seed docs → claims → 1 resolved + 1 review-needed entity
 → 1 relationship → 1 fact version) is green, and **real data appears on the already-live API/dashboard**.
 
-### Phase C — Agent surface depth
-Plan: **03 (Agent-Facing Surface)** + MCP-on-Vercel portion of **07**.
+### Phase C — Agent surface depth ✅ COMPLETE & LIVE
+Plan: **03 (Agent-Facing Surface)** ✅ all 8 workstreams + MCP-on-Vercel portion of **07** (W2) ✅.
+`getDelta` (token-budgeted cited bitemporal digest) + `verifyClaim` (evidence-match + contradiction,
+adversarial-safe) implemented in the shared query layer; MCP mounted at `/api/mcp` (Streamable HTTP,
+stateless); typed SDK; freshness/coverage (evidence-depth). Acceptance gate proven live 23/23 across
+MCP + SDK/REST against real production data.
 Goal: the killer feature — "what changed since my cutoff," verifiable and token-budgeted.
 Key deliverables:
 - Implement `get_delta` (token-budgeted digest over changed claims/entities since a date) and

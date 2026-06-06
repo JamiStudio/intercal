@@ -380,6 +380,14 @@ The first proof consumes the same adapters, provenance rules, and public query p
   proof surfaces, first-proof source rows/scripts/seeds if source-owned, bounded backfill/live-proof
   tooling, operations docs, related tests, Workstream 4 roadmap status, and changelog. Next
   coordinator action: poll in short intervals, record result, then gate the pass 4 commit.
+- 2026-06-06T15:12:00-04:00 — Workstream 4 pass 4 returned complete. Commit:
+  `2166f66c9252104bd1145e5b9874986fd5d17277` (`feat(corpus): prove live first proof coverage`),
+  pushed to `origin/main`. Gate result: 7 files and 1105 LOC fails the numeric closeout gate.
+  `live-first-proof` now passes on the configured Neon DB after reviewed first-proof source rows and
+  bounded corpus rows were applied; `live-full` still fails truthfully on broad taxonomy gaps
+  including benchmark, developer ecosystem, infrastructure, policy/regulatory, broader
+  research/release/protocol coverage, and full topic clusters. Next coordinator action: dispatch
+  Workstream 4 pass 5 for broad live-full coverage gaps.
 
 ## Workstream 1: Corpus Scope And Source Taxonomy
 

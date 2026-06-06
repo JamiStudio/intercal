@@ -130,15 +130,15 @@ async function seedProof(tx) {
 
   await sql`
     INSERT INTO claims
-      (id, subject_entity_id, subject_text, predicate, object_text, normalized_text, valid_from, extraction_confidence, source_document_ids, contradiction_status, metadata, created_at, updated_at)
+      (id, subject_entity_id, subject_text, predicate, object_text, normalized_text, valid_from, extractor, extraction_confidence, source_document_ids, contradiction_status, metadata, created_at, updated_at)
     VALUES
-      (${IDS.claims.chatgpt}, ${IDS.entities.chatgpt}, 'ChatGPT', 'released', 'frontier LLM public interface', 'ChatGPT is part of the frontier LLMs timeline after November 2022.', '2022-11-30T00:00:00Z', 0.95, ARRAY[${IDS.docs.chatgpt}]::uuid[], 'none', '{"topic_cluster":"frontier_llms"}', '2023-03-02T00:00:00Z', '2023-03-02T00:00:00Z'),
-      (${IDS.claims.claude}, ${IDS.entities.claude}, 'Claude', 'released', 'frontier LLM assistant', 'Claude is part of the frontier LLMs timeline after March 2023.', '2023-03-14T00:00:00Z', 0.94, ARRAY[${IDS.docs.claude}]::uuid[], 'none', '{"topic_cluster":"frontier_llms"}', '2023-03-15T00:00:00Z', '2023-03-15T00:00:00Z'),
-      (${IDS.claims.gemini}, ${IDS.entities.gemini}, 'Gemini', 'released', 'frontier LLM family', 'Gemini is part of the frontier LLMs timeline after December 2023.', '2023-12-06T00:00:00Z', 0.93, ARRAY[${IDS.docs.gemini}]::uuid[], 'none', '{"topic_cluster":"frontier_llms"}', '2024-02-15T00:00:00Z', '2024-02-15T00:00:00Z'),
-      (${IDS.claims.llama}, ${IDS.entities.llama}, 'Llama', 'released', 'open-weight model family', 'Llama is an open-weight model family in the frontier LLMs timeline.', '2024-04-18T00:00:00Z', 0.92, ARRAY[${IDS.docs.llama}]::uuid[], 'none', '{"topic_cluster":"open_weight_models"}', '2024-04-18T00:00:00Z', '2024-04-18T00:00:00Z'),
-      (${IDS.claims.mcp}, ${IDS.entities.mcp}, 'MCP protocol', 'introduced', 'agent tooling protocol', 'MCP protocol connects models to tools and context.', '2024-11-25T00:00:00Z', 0.91, ARRAY[${IDS.docs.mcp}]::uuid[], 'none', '{"topic_cluster":"model_context_protocol"}', '2024-11-25T00:00:00Z', '2024-11-25T00:00:00Z'),
-      (${IDS.claims.turbo128k}, ${IDS.entities.turbo}, 'GPT-4 Turbo', 'supports_context_window', '128k context window', 'GPT-4 Turbo supports a 128k context window.', '2023-11-06T00:00:00Z', 0.96, ARRAY[${IDS.docs.turbo}]::uuid[], 'has_contradiction', '{"topic_cluster":"frontier_llms"}', '2023-11-06T00:00:00Z', '2023-11-06T00:00:00Z'),
-      (${IDS.claims.turbo1m}, ${IDS.entities.turbo}, 'GPT-4 Turbo', 'supports_context_window', '1M context window', 'GPT-4 Turbo supports a 1M context window.', '2023-11-06T00:00:00Z', 0.20, ARRAY[${IDS.docs.turbo}]::uuid[], 'has_contradiction', '{"topic_cluster":"frontier_llms"}', '2023-11-07T00:00:00Z', '2023-11-07T00:00:00Z')
+      (${IDS.claims.chatgpt}, ${IDS.entities.chatgpt}, 'ChatGPT', 'released', 'frontier LLM public interface', 'ChatGPT is part of the frontier LLMs timeline after November 2022.', '2022-11-30T00:00:00Z', 'workstream_4_seeded_quality_gate', 0.95, ARRAY[${IDS.docs.chatgpt}]::uuid[], 'none', '{"topic_cluster":"frontier_llms"}', '2023-03-02T00:00:00Z', '2023-03-02T00:00:00Z'),
+      (${IDS.claims.claude}, ${IDS.entities.claude}, 'Claude', 'released', 'frontier LLM assistant', 'Claude is part of the frontier LLMs timeline after March 2023.', '2023-03-14T00:00:00Z', 'workstream_4_seeded_quality_gate', 0.94, ARRAY[${IDS.docs.claude}]::uuid[], 'none', '{"topic_cluster":"frontier_llms"}', '2023-03-15T00:00:00Z', '2023-03-15T00:00:00Z'),
+      (${IDS.claims.gemini}, ${IDS.entities.gemini}, 'Gemini', 'released', 'frontier LLM family', 'Gemini is part of the frontier LLMs timeline after December 2023.', '2023-12-06T00:00:00Z', 'workstream_4_seeded_quality_gate', 0.93, ARRAY[${IDS.docs.gemini}]::uuid[], 'none', '{"topic_cluster":"frontier_llms"}', '2024-02-15T00:00:00Z', '2024-02-15T00:00:00Z'),
+      (${IDS.claims.llama}, ${IDS.entities.llama}, 'Llama', 'released', 'open-weight model family', 'Llama is an open-weight model family in the frontier LLMs timeline.', '2024-04-18T00:00:00Z', 'workstream_4_seeded_quality_gate', 0.92, ARRAY[${IDS.docs.llama}]::uuid[], 'none', '{"topic_cluster":"open_weight_models"}', '2024-04-18T00:00:00Z', '2024-04-18T00:00:00Z'),
+      (${IDS.claims.mcp}, ${IDS.entities.mcp}, 'MCP protocol', 'introduced', 'agent tooling protocol', 'MCP protocol connects models to tools and context.', '2024-11-25T00:00:00Z', 'workstream_4_seeded_quality_gate', 0.91, ARRAY[${IDS.docs.mcp}]::uuid[], 'none', '{"topic_cluster":"model_context_protocol"}', '2024-11-25T00:00:00Z', '2024-11-25T00:00:00Z'),
+      (${IDS.claims.turbo128k}, ${IDS.entities.turbo}, 'GPT-4 Turbo', 'supports_context_window', '128k context window', 'GPT-4 Turbo supports a 128k context window.', '2023-11-06T00:00:00Z', 'workstream_4_seeded_quality_gate', 0.96, ARRAY[${IDS.docs.turbo}]::uuid[], 'none', '{"topic_cluster":"frontier_llms"}', '2023-11-06T00:00:00Z', '2023-11-06T00:00:00Z'),
+      (${IDS.claims.turbo1m}, ${IDS.entities.turbo}, 'GPT-4 Turbo', 'supports_context_window', '1M context window', 'GPT-4 Turbo supports a 1M context window.', '2023-11-06T00:00:00Z', 'workstream_4_seeded_quality_gate', 0.20, ARRAY[${IDS.docs.turbo}]::uuid[], 'has_contradiction', '{"topic_cluster":"frontier_llms"}', '2023-11-07T00:00:00Z', '2023-11-07T00:00:00Z')
   `.execute(tx);
 
   for (const [claimId, docId] of [
@@ -212,8 +212,8 @@ async function runQueryProofs(tx) {
   proofs.push(
     proof(
       'get_delta frontier LLMs',
-      delta.changedClaims.length >= 4 && delta.citations.length > 0,
-      `claims=${delta.changedClaims.length}; citations=${delta.citations.length}`,
+      delta.changedClaims.length >= 4 && delta.summary.citations.length > 0,
+      `claims=${delta.changedClaims.length}; citations=${delta.summary.citations.length}`,
     ),
   );
 

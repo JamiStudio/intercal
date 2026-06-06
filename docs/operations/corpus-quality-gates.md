@@ -64,9 +64,9 @@ The seeded proof and live first-proof gate are aligned with the taxonomy query s
 - `search_evidence("MCP protocol", date range 2024-01-01 through 2026-06-06)`
 
 The verifier requires citations on public facts and checks point-in-time behavior: the 128k GPT-4
-Turbo claim is unverified before supporting evidence exists and later returns cited support plus a
-surfaced contradiction in seeded proof mode. The adversarial 1M-context claim must not return
-`supported`.
+Turbo claim is unverified before supporting evidence exists and later returns cited support in
+seeded proof mode. The adversarial 1M-context claim must not return `supported`, and the corpus
+quality report separately requires at least one open contradiction row.
 
 ## Live Verification Remaining
 

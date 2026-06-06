@@ -344,6 +344,16 @@ The first proof consumes the same adapters, provenance rules, and public query p
   API/MCP/SDK quality-gate surfaces, scripts/dev proof tooling, operations docs, related tests,
   Workstream 4 roadmap status, and changelog. Next coordinator action: poll in short intervals,
   record result, then apply the second-pass gate.
+- 2026-06-06T14:20:42-04:00 — Workstream 4 pass 2 fresh-context audit found executable verifier
+  drift and fixed it in scope. The rollback seeded proof now satisfies the live `claims.extractor`
+  schema, reads `get_delta` citations from the contracted `summary.citations` shape, and no longer
+  marks the supported 128k GPT-4 Turbo proof claim itself as contradicted. A local `.env` database
+  was available but missing migrations 0026 through 0031; non-fresh `node scripts/dev/migrate.mjs
+  --seed` applied the pending migrations and idempotent seeds without resetting data. DB-backed
+  `seeded-proof` now passes and rolls back cleanly. `live-first-proof` and `live-full` still fail
+  because the database has registry/current documents but no live GPT/Claude/Gemini/Llama/MCP
+  backfilled claims, topic clusters, or open contradiction rows. Production corpus coverage remains
+  unproven until real backfill evidence passes the live modes.
 
 ## Workstream 1: Corpus Scope And Source Taxonomy
 
@@ -620,7 +630,7 @@ Pass 1 closeout note: Workstream 4 now has executable corpus quality gates in `@
 range, required entity coverage, citation depth, contradiction state, and review-needed rate from
 canonical tables, and it includes rollback-only seeded proof data for GPT, Claude, Gemini, Llama,
 MCP, `get_delta("frontier LLMs", since=2023-03-01)`, point-in-time `verify_claim`, contradiction
-surfacing, adversarial wrong-value verification, and evidence search. This pass proves the quality
+coverage, adversarial wrong-value verification, and evidence search. This pass proves the quality
 gate/query machinery without claiming production corpus coverage. Live first-proof and full-taxonomy
 passes remain open until real backfilled evidence passes `live-first-proof` and `live-full`.
 
@@ -631,6 +641,15 @@ loads that core surface and uses rollback-scoped seed rows for the first-proof q
 commands. This pass did not run a live database corpus proof because no `DATABASE_URL` was available
 in the local shell; production coverage claims remain blocked on real backfilled evidence passing the
 live modes.
+
+Pass 2 closeout note: the fresh audit ran the DB-backed verifier modes by loading local `.env`
+without printing secrets, after applying pending migrations non-fresh to the available database.
+It fixed seeded verifier drift against the live schema and response contract: rollback claims now
+include mandatory extraction provenance, the delta proof checks `summary.citations`, and the true
+128k GPT-4 Turbo point-in-time claim verifies as supported while the wrong 1M claim remains
+adversarially contradicted. `seeded-proof` passes and confirms rollback cleanup. `live-first-proof`
+and `live-full` fail truthfully on missing real GPT-era AI-history backfill coverage, so Workstream 4
+query/corpus machinery is proven but production broad-corpus claims remain open.
 
 ## Workstream 5: Public Intercal Knowledge Experience
 

@@ -13,9 +13,11 @@ const repoRoot = resolve(pkgRoot, '..', '..');
 // 1) Regenerate from source.
 const build = spawnSync('node', ['scripts/build-contracts.mjs'], {
   stdio: 'inherit',
-  shell: true,
   cwd: pkgRoot,
 });
+if (build.error) {
+  console.error(`[contracts:check] failed to start build: ${build.error.message}`);
+}
 if ((build.status ?? 1) !== 0) {
   console.error('[contracts:check] build failed.');
   process.exit(1);

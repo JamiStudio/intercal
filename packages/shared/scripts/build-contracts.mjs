@@ -12,10 +12,21 @@ const here = dirname(fileURLToPath(import.meta.url));
 const pkgRoot = resolve(here, '..');
 const repoRoot = resolve(pkgRoot, '..', '..');
 
+function commandFor(cmd, args) {
+  if (cmd === 'pnpm' && process.env.npm_execpath) {
+    return { cmd: process.execPath, args: [process.env.npm_execpath, ...args] };
+  }
+  return { cmd, args };
+}
+
 function run(cmd, args, opts = {}) {
   const printable = `${cmd} ${args.join(' ')}`;
   console.log(`\n$ ${printable}`);
-  const r = spawnSync(cmd, args, { stdio: 'inherit', shell: true, cwd: pkgRoot, ...opts });
+  const resolved = commandFor(cmd, args);
+  const r = spawnSync(resolved.cmd, resolved.args, { stdio: 'inherit', cwd: pkgRoot, ...opts });
+  if (r.error) {
+    console.error(`[contracts] failed to start ${cmd}: ${r.error.message}`);
+  }
   return r.status ?? 1;
 }
 
@@ -92,8 +103,11 @@ if (existsSync(dirname(pyOut))) {
       '--use-standard-collections',
       '--use-union-operator',
       '--disable-timestamp',
+      '--formatters',
+      'black',
+      'isort',
     ],
-    { cwd: repoRoot },
+    { cwd: repoRoot, env: { ...process.env, UV_LINK_MODE: process.env.UV_LINK_MODE ?? 'copy' } },
   );
   if (code !== 0) {
     console.warn(

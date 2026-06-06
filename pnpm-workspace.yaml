@@ -1,6 +1,10 @@
 packages:
   - "packages/*"
 
+onlyBuiltDependencies:
+  - esbuild
+  - sharp
+
 # Shared, single-sourced dependency versions (pnpm catalog).
 # Reference in package.json as e.g. "hono": "catalog:".
 catalog:

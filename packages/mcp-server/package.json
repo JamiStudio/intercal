@@ -13,7 +13,7 @@
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",
   "bin": {
-    "intercal-mcp-stdio": "./dist/stdio.js"
+    "intercal-mcp-stdio": "./bin/intercal-mcp-stdio.mjs"
   },
   "scripts": {
     "build": "tsc -p tsconfig.json",

@@ -223,9 +223,9 @@ export interface UsageEventsTable {
 }
 
 /**
- * Audit events (db/migrations/0022_audit_events.sql; append-only enforced by 0026). The trust
- * ledger: who did what to trust-sensitive state. INSERT-only — the DB rejects UPDATE/DELETE, so
- * this interface intentionally has no update markers. `before_state`/`after_state`/`metadata` are
+ * Audit events (db/migrations/0022_audit_events.sql; append-only enforced by 0026/0027). The trust
+ * ledger: who did what to trust-sensitive state. INSERT-only — the DB rejects UPDATE/DELETE/
+ * TRUNCATE, so this interface intentionally has no update markers. `before_state`/`after_state`/`metadata` are
  * jsonb written as a JSON string on insert and read back as parsed JSON. No secret values are ever
  * written here (see packages/core/src/auth/audit.ts).
  */

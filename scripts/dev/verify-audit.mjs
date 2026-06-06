@@ -7,7 +7,7 @@
 //   - issueApiKey  → one `api_key.issue`  audit_events row (actor/action/target correct)
 //   - revokeApiKey → one `api_key.revoke` audit_events row (before/after + rationale)
 //   - NO secret material (raw key / hash) appears in ANY audit row
-//   - the table is append-only: a direct UPDATE and a direct DELETE both RAISE (migration 0026)
+//   - the table is append-only: direct UPDATE, DELETE, and TRUNCATE all RAISE (migrations 0026/0027)
 //
 // NEVER prints the raw key or the DATABASE_URL.
 //
@@ -101,7 +101,7 @@ async function main() {
     !/[0-9a-f]{64}/i.test(serialized.replace(/[0-9a-f-]{36}/gi, '')), // strip uuids first
   );
 
-  // --- Append-only enforcement (migration 0026): UPDATE and DELETE must RAISE ---
+  // --- Append-only enforcement: UPDATE/DELETE (0026) and TRUNCATE (0027) must RAISE ---
   let updateBlocked = false;
   try {
     await db

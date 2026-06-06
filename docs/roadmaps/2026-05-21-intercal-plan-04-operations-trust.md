@@ -293,7 +293,7 @@ Implementation tasks:
 Exit criteria:
 
 - [x] Trust-sensitive actions write expected audit events. (Real key issue/revoke → append-only
-      `api_key.issue`/`api_key.revoke` rows; proven live 14/14 + the CLI path.)
+      `api_key.issue`/`api_key.revoke` rows; proven live 15/15 + the CLI path.)
 
 Suggested verification:
 

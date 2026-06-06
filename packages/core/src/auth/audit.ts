@@ -4,7 +4,7 @@
  * Distinct from `usage_events` (per-request telemetry): audit events are the security/trust record
  * of mutations to trust-sensitive state (API-key issuance/revocation today; feedback, review and
  * operator decisions, and source-policy changes as those surfaces land). Rows are append-only —
- * the DB rejects UPDATE/DELETE (migration 0026) — so this module only ever INSERTs.
+ * the DB rejects UPDATE/DELETE/TRUNCATE (migrations 0026/0027) — so this module only ever INSERTs.
  *
  * Two recording modes, deliberately different from usage recording:
  *   - `recordAuditEvent` is BEST-EFFORT (swallows errors) for emission alongside an action whose

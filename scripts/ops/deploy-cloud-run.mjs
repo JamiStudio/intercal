@@ -22,9 +22,10 @@
 // manage the SA/IAM, and write Secret Manager. In CI this is the `google-github-actions/auth`
 // identity (GCP_SA_KEY); locally it is your `gcloud auth login` account.
 //
-// Config (read from .env, non-secret): GCLOUD_PROJECT_ID, GCLOUD_REGION (deploy region), plus the
-// app-runtime selectors/budget knobs. Sensitive values (DATABASE_URL, S3_*, REDIS_URL, Upstash,
-// GEMINI_API_KEY) are fanned to Secret Manager. See docs/operations/pipeline-cd.md.
+// Config (read from .env, non-secret): GCLOUD_PROJECT_ID, CLOUD_RUN_REGION (job/Artifact Registry
+// region), plus the app-runtime selectors/budget knobs. Sensitive values (DATABASE_URL, S3_*,
+// REDIS_URL, Upstash, GEMINI_API_KEY) are fanned to Secret Manager. See
+// docs/operations/pipeline-cd.md.
 import { execFile, execFileSync } from 'node:child_process';
 import { readFileSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';

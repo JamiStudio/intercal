@@ -280,6 +280,11 @@ The first proof consumes the same adapters, provenance rules, and public query p
   py:typecheck`, `git diff --check`, and changed-file secret scan passed. Not run: live Neon/Cloud
   Run/Actions backfill and `pnpm ops:health`. Next coordinator action: dispatch mandatory
   Workstream 3 pass 2 with fresh context, including non-LLM budget accounting gap review.
+- 2026-06-06T13:11:19-04:00 — Dispatched mandatory Workstream 3 pass 2 to agent
+  `019e9dea-a8e6-7701-9cc9-5ba80a1256a6` (`Darwin`). Ownership boundary: Workstream 3 pipeline,
+  ingest cursor/run semantics, ops scripts/workflows, operations docs, resource budget, related
+  Python tests, Workstream 3 roadmap status, and changelog. Next coordinator action: poll in short
+  intervals, record result, then apply the second-pass gate.
 
 ## Workstream 1: Corpus Scope And Source Taxonomy
 

@@ -180,6 +180,14 @@ The first proof consumes the same adapters, provenance rules, and public query p
   audit targets include source policy metadata, SSRF/URL validation, pagination/cursors, dedup,
   bounded date windows, direct fact-write avoidance, and overclaiming. Next coordinator action:
   poll in short intervals, record result, then apply the second-pass gate.
+- 2026-06-06T12:24:00-04:00 — Workstream 2 pass 2 returned complete. Commit:
+  `6e1155fe53f76033daf316b5658f22d4cc00ac01` (`fix(shared): harden historical adapter bounds`),
+  pushed to `origin/main`. Changed files: historical adapters, GitHub adapter, focused historical
+  adapter tests, active roadmap, and changelog. Verification reported: focused Python tests,
+  `pnpm py:lint`, `pnpm py:typecheck`, `git diff --check`, and changed-file secret scan passed.
+  Second-pass gate: 5 files and 269 LOC passes numeric gate; contents classified as B because this
+  pass added meaningful adapter hardening plus regression tests. Next coordinator action: dispatch
+  one more fresh-context Workstream 2 pass to confirm quiet.
 - 2026-06-06T12:16:31-04:00 — Workstream 2 pass 2 fresh-context audit found cohesive adapter
   coverage with no direct fact writes, but tightened historical-bound correctness before closeout:
   invalid configured date bounds now fail closed, bounded registry/RSS/GitHub historical runs exclude

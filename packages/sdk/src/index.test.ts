@@ -253,4 +253,30 @@ describe('IntercalClient — retries', () => {
     await client.getDelta({ topic: 'rust', since_date: '2024-01-01T00:00:00Z' }).catch(() => {});
     expect(n).toBe(1);
   });
+
+  it('does not retry feedback POSTs because submissions create review records', async () => {
+    let n = 0;
+    const impl: typeof fetch = async () => {
+      n += 1;
+      return new Response(JSON.stringify(errorFixtures.internal_error.body), { status: 503 });
+    };
+    const client = new IntercalClient({
+      baseUrl: BASE,
+      fetch: impl,
+      maxRetries: 3,
+      retryBackoffMs: 0,
+    });
+
+    const err = await client
+      .submitFeedback({
+        targetType: 'entity',
+        targetId: '22222222-2222-4222-8222-222222222222',
+        concernType: 'outdated',
+        summary: 'Display name appears stale',
+      })
+      .catch((e) => e);
+
+    expect(err).toBeInstanceOf(IntercalServerError);
+    expect(n).toBe(1);
+  });
 });

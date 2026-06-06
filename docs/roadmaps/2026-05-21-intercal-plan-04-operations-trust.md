@@ -344,6 +344,13 @@ accepted submission writes `feedback.submit` to `audit_events` in the same trans
 record. Focused API tests prove review/audit creation and canonical entity/claim/source/digest
 snapshots remain unchanged. Durable doc: `docs/operations/review-workflows.md`.
 
+**Audit-2 (2026-06-06, fresh-context pass):** core/API/schema boundaries held: feedback inserts only
+`review_records` plus transactional `feedback.submit`, validates through the generated
+`FeedbackRequest` schema, rejects unknown canonical targets before insert/audit, and leaves canonical
+entities/claims/sources/digests unchanged. One real SDK gap was fixed: `submitFeedback` no longer
+inherits automatic transient retries, preventing duplicate review rows when a feedback POST commits
+but the response fails.
+
 Depends on:
 
 - [x] Workstream 3 audit events.

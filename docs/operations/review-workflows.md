@@ -19,6 +19,10 @@ Anonymous callers may submit under the anonymous rate limit. If an API key is su
 include `submit:feedback`; `admin` also satisfies the scope rule. A key that has only `read` is
 rejected for feedback submission.
 
+The SDK sends feedback submissions once and does not apply automatic transient retries to this
+POST. A retry after an ambiguous network failure is an explicit caller choice, because successful
+submissions create review records.
+
 ## Stored Records
 
 Submissions create one `review_records` row with status `received`. Entity, claim, source, and

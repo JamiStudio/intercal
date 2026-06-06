@@ -333,36 +333,24 @@ export class IntercalClient {
     for (const [k, v] of Object.entries(this.extraHeaders)) headers.set(k, v);
     if (this.apiKey) headers.set('authorization', `Bearer ${this.apiKey}`);
 
-    let attempt = 0;
-    while (true) {
-      let res: Response;
-      try {
-        res = await this.fetchImpl(url, {
-          ...init,
-          method: 'POST',
-          headers,
-          body: JSON.stringify(body),
-        });
-      } catch (cause) {
-        if (attempt < this.maxRetries) {
-          await this.backoff(attempt++);
-          continue;
-        }
-        throw new IntercalNetworkError(
-          cause instanceof Error ? cause.message : 'Network request failed',
-          cause,
-        );
-      }
-
-      if (res.ok) return (await res.json()) as T;
-
-      if (res.status >= 500 && res.status !== 501 && attempt < this.maxRetries) {
-        await this.backoff(attempt++);
-        continue;
-      }
-
-      throw errorFor(res.status, await this.parseError(res));
+    let res: Response;
+    try {
+      res = await this.fetchImpl(url, {
+        ...init,
+        method: 'POST',
+        headers,
+        body: JSON.stringify(body),
+      });
+    } catch (cause) {
+      throw new IntercalNetworkError(
+        cause instanceof Error ? cause.message : 'Network request failed',
+        cause,
+      );
     }
+
+    if (res.ok) return (await res.json()) as T;
+
+    throw errorFor(res.status, await this.parseError(res));
   }
 
   private async parseError(res: Response): Promise<Partial<Schemas['ApiError']>> {

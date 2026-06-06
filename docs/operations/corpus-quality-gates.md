@@ -66,10 +66,12 @@ The seeded proof and live first-proof gate are aligned with the taxonomy query s
 - `verify_claim("GPT-4 Turbo supports a 1M context window", as_of_date="2024-04-01")`
 - `search_evidence("MCP protocol", date range 2024-01-01 through 2026-06-06)`
 
-The verifier requires citations on public facts and checks point-in-time behavior: the 128k GPT-4
-Turbo claim is unverified before supporting evidence exists and later returns cited support in
-seeded proof mode. The adversarial 1M-context claim must not return `supported`, and the corpus
-quality report separately requires at least one open contradiction row.
+The verifier requires citations on public facts and checks point-in-time behavior: the
+ChatGPT/Claude/Gemini/Llama entity reads must return only facts whose valid-world windows contain
+the requested `at_date`; the 128k GPT-4 Turbo claim is unverified before supporting evidence exists
+and later returns cited support in seeded proof mode. The adversarial 1M-context claim must not
+return `supported`, and the corpus quality report separately requires at least one open
+contradiction row.
 
 Seeded mode also inserts a rollback-scoped source-policy sentinel document whose body contains a
 restricted marker and is `citation_only` plus not summary-allowed. The `search_evidence` proof
@@ -158,6 +160,10 @@ As of the 2026-06-06 Workstream 4 pass 9 proof, `search_evidence` applies the sa
 body gate to retrieval that it already applied to snippets: restricted body text is neither emitted
 nor searchable, while title/citation metadata remains searchable. The seeded source-policy proof now
 checks both behaviors.
+
+As of the 2026-06-06 Workstream 4 pass 10 proof, the first-proof verifier exercises every documented
+point-in-time entity proof (`ChatGPT`, `Claude`, `Gemini`, and `Llama`) instead of only the ChatGPT
+case. This keeps the query-path proof aligned with the first-proof query set above.
 
 ## Live Verification Remaining
 

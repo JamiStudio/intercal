@@ -829,6 +829,15 @@ return no restricted document, while a title query still returns only citation m
 catalog rows, proof corpus rows, source-policy loosening, dashboard, docs/Mintlify, marketing/SEO,
 domain routing, or release-audit work was added.
 
+Pass 10 closeout note: the strict quiet audit found one remaining verifier coverage mismatch and
+fixed it in scope. The first-proof query set documented point-in-time `get_entity` checks for
+ChatGPT, Claude, Gemini, and Llama, but the executable verifier only checked ChatGPT. The verifier
+now exercises all four documented entity `as_of` paths and requires every returned fact to be inside
+the requested valid-world window. No source catalog rows, proof corpus rows, source-policy loosening,
+raw source-text exposure, dashboard, docs/Mintlify, marketing/SEO, domain routing, or release-audit
+work was added. Workstream 4 is quiet from the corpus/query-proof boundary after pass 10
+verification.
+
 ## Workstream 5: Public Intercal Knowledge Experience
 
 Goal: Replace the thin dashboard shell with the full read-only public product surface.

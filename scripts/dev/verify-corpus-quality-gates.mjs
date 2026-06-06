@@ -220,10 +220,9 @@ async function runQueryProofs(tx, options = {}) {
     }
   }
 
-  await addProof('get_entity ChatGPT as_of', async () => {
-    const asOf = '2023-03-01T00:00:00Z';
+  async function checkEntityAsOf(name, asOf) {
     const entity = await core.getEntity(tx, {
-      name_or_id: 'ChatGPT',
+      name_or_id: name,
       at_date: asOf,
     });
     const asOfTime = new Date(asOf).getTime();
@@ -233,10 +232,19 @@ async function runQueryProofs(tx, options = {}) {
       return validFromOk && validUntilOk;
     });
     return {
-      passed: entity.entity.displayName === 'ChatGPT' && entity.facts.length > 0 && factsInWindow,
+      passed: entity.entity.displayName === name && entity.facts.length > 0 && factsInWindow,
       detail: `${entity.entity.displayName}; facts=${entity.facts.length}; factsInWindow=${factsInWindow}`,
     };
-  });
+  }
+
+  for (const [name, asOf] of [
+    ['ChatGPT', '2023-03-01T00:00:00Z'],
+    ['Claude', '2024-03-01T00:00:00Z'],
+    ['Gemini', '2024-02-15T00:00:00Z'],
+    ['Llama', '2024-04-18T00:00:00Z'],
+  ]) {
+    await addProof(`get_entity ${name} as_of`, () => checkEntityAsOf(name, asOf));
+  }
 
   await addProof('get_freshness MCP protocol', async () => {
     const freshness = await core.getFreshness(tx, { topic_or_entity: 'MCP protocol' });

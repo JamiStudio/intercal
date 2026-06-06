@@ -105,6 +105,31 @@ CREATE INDEX IF NOT EXISTS idx_provider_usage_events_provider_observed
 CREATE INDEX IF NOT EXISTS idx_provider_usage_events_metric_period
     ON provider_usage_events (provider, metric_name, period_start DESC, observed_at DESC);
 
+CREATE OR REPLACE FUNCTION provider_usage_events_forbid_mutation()
+RETURNS trigger
+LANGUAGE plpgsql
+AS $$
+BEGIN
+    RAISE EXCEPTION 'provider_usage_events is append-only: % is not permitted', TG_OP
+        USING ERRCODE = 'integrity_constraint_violation';
+END;
+$$;
+
+DROP TRIGGER IF EXISTS trg_provider_usage_events_no_update ON provider_usage_events;
+CREATE TRIGGER trg_provider_usage_events_no_update
+    BEFORE UPDATE ON provider_usage_events
+    FOR EACH ROW EXECUTE FUNCTION provider_usage_events_forbid_mutation();
+
+DROP TRIGGER IF EXISTS trg_provider_usage_events_no_delete ON provider_usage_events;
+CREATE TRIGGER trg_provider_usage_events_no_delete
+    BEFORE DELETE ON provider_usage_events
+    FOR EACH ROW EXECUTE FUNCTION provider_usage_events_forbid_mutation();
+
+DROP TRIGGER IF EXISTS trg_provider_usage_events_no_truncate ON provider_usage_events;
+CREATE TRIGGER trg_provider_usage_events_no_truncate
+    BEFORE TRUNCATE ON provider_usage_events
+    FOR EACH STATEMENT EXECUTE FUNCTION provider_usage_events_forbid_mutation();
+
 CREATE OR REPLACE VIEW observability_source_health AS
 WITH run_rollups AS (
     SELECT
@@ -367,6 +392,8 @@ JOIN usage_rollups u ON u.provider = a.provider AND u.allowance_key = a.allowanc
 
 COMMENT ON TABLE provider_usage_events IS
     'Append-only provider consumption observations imported from real provider APIs, billing exports, or adapter measurements. No credentials.';
+COMMENT ON FUNCTION provider_usage_events_forbid_mutation() IS
+    'Plan 04 W6: enforces the append-only invariant on provider_usage_events.';
 COMMENT ON TABLE observability_provider_budget_allowances IS
     'Budget allowance snapshot linked to docs/operations/resource-budget.md; update when provider quotas are re-verified.';
 COMMENT ON VIEW observability_source_health IS

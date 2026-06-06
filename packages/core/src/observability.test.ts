@@ -31,4 +31,16 @@ describe('observability views', () => {
       "WHEN u.last_observed_at IS NULL THEN 'no provider usage event has been recorded'",
     );
   });
+
+  it('enforces provider usage events as append-only telemetry', () => {
+    const migration = readFileSync(
+      resolve(process.cwd(), '..', '..', 'db', 'migrations', '0030_observability.sql'),
+      'utf8',
+    );
+
+    expect(migration).toContain('CREATE OR REPLACE FUNCTION provider_usage_events_forbid_mutation');
+    expect(migration).toContain('trg_provider_usage_events_no_update');
+    expect(migration).toContain('trg_provider_usage_events_no_delete');
+    expect(migration).toContain('trg_provider_usage_events_no_truncate');
+  });
 });

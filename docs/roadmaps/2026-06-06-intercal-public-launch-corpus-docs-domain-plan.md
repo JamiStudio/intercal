@@ -229,6 +229,11 @@ The first proof consumes the same adapters, provenance rules, and public query p
   `019e9dcb-6d82-7ec0-a8fe-bde9d650908d` (`Sartre`). Ownership boundary: Workstream 2 adapters,
   source registry, related adapter tests, Workstream 2 roadmap status, and changelog. Next
   coordinator action: poll in short intervals, record result, then gate the pass 5 commit.
+- 2026-06-06T12:50:00-04:00 — Workstream 2 pass 5 returned complete. Commit:
+  `45cc5851141b6d9925d95184d3e3eb83aa73ae38` (`fix(shared): harden rss feed cursor scope`),
+  pushed to `origin/main`. Gate result: 5 files and 172 LOC passes the numeric gate, but contents
+  are another meaningful adapter hardening fix plus tests. Next coordinator action: dispatch another
+  fresh-context Workstream 2 pass; do not close from pass 5.
 - 2026-06-06T13:05:00-04:00 — Workstream 2 pass 5 strict quiet audit found and closed one
   remaining RSS cursor/dedup gap. RSS/Atom feeds now track seen IDs and latest timestamps per feed
   URL, and entries without a stable feed ID or link no longer produce title-derived source

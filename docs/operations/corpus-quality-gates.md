@@ -25,9 +25,11 @@ node scripts/dev/verify-corpus-quality-gates.mjs live-full
 - `live-first-proof` evaluates the first GPT/Claude/Gemini/Llama/MCP proof gates against the
   existing corpus and then exercises the same query proof set as seeded mode. Use this after a
   bounded backfill proof run.
-- `live-full` evaluates the broad AI-history taxonomy gates against the existing corpus. This should
-  fail until source rows and backfill evidence cover every required source class, topic cluster,
-  date range, entity, citation-depth, contradiction, and review-needed threshold.
+- `live-full` evaluates the broad AI-history taxonomy gates against the existing corpus and
+  exercises broad query proofs for benchmark deltas, model-architecture point-in-time verification,
+  and regulatory evidence search. This should fail until source rows and backfill evidence cover
+  every required source class, topic cluster, date range, entity, citation-depth, contradiction,
+  review-needed threshold, and broad query path.
 
 The script never prints `DATABASE_URL`. Seeded mode writes only rollback-scoped probe rows and checks
 that no probe source rows remain afterward.
@@ -132,6 +134,12 @@ required source classes, topic clusters, date ranges, first-proof entity citatio
 depth, contradiction coverage, and review-needed-rate checks. Public coverage language may now cite
 the passing `live-full` gate, but should still describe these rows as a bounded reviewed proof slice,
 not continuous full-web saturation.
+
+As of the 2026-06-06 Workstream 4 pass 7 proof, `live-full` also exercises broad query paths:
+`get_delta("MLPerf", since_date="2023-01-01")`, `verify_claim("Mamba introduced selective
+state-space sequence model architecture", as_of_date before and after evidence)`, and
+`search_evidence("Executive Order 14110")`. The full gate is therefore a broad taxonomy and query
+proof, not only an aggregate row-count check.
 
 ## Live Verification Remaining
 

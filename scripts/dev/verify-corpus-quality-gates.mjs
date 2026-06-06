@@ -292,11 +292,66 @@ async function runQueryProofs(tx) {
   return proofs;
 }
 
+async function runBroadQueryProofs(tx) {
+  const proofs = [];
+  async function addProof(name, run) {
+    try {
+      const result = await run();
+      proofs.push(proof(name, result.passed, result.detail));
+    } catch (error) {
+      proofs.push(proof(name, false, error instanceof Error ? error.message : String(error)));
+    }
+  }
+
+  await addProof('get_delta broad benchmarks', async () => {
+    const delta = await core.getDelta(tx, {
+      topic: 'MLPerf',
+      since_date: '2023-01-01T00:00:00Z',
+      token_budget: 300,
+    });
+    return {
+      passed: delta.changedClaims.length >= 5 && delta.summary.citations.length >= 5,
+      detail: `claims=${delta.changedClaims.length}; citations=${delta.summary.citations.length}`,
+    };
+  });
+
+  await addProof('verify_claim broad architecture as_of before evidence', async () => {
+    const before = await core.verifyClaim(tx, {
+      claim_text: 'Mamba introduced selective state-space sequence model architecture',
+      as_of_date: '2023-01-01T00:00:00Z',
+    });
+    return { passed: before.verdict === 'unverified', detail: `verdict=${before.verdict}` };
+  });
+
+  await addProof('verify_claim broad architecture as_of after evidence', async () => {
+    const after = await core.verifyClaim(tx, {
+      claim_text: 'Mamba introduced selective state-space sequence model architecture',
+      as_of_date: '2024-01-01T00:00:00Z',
+    });
+    return {
+      passed: after.verdict !== 'unverified' && after.supportingEvidence.length > 0,
+      detail: `verdict=${after.verdict}; supporting=${after.supportingEvidence.length}; contradicting=${after.contradictingEvidence.length}`,
+    };
+  });
+
+  await addProof('search_evidence broad regulation', async () => {
+    const evidence = await core.searchEvidence(tx, {
+      query: 'Executive Order 14110',
+      from_date: '2023-01-01T00:00:00Z',
+      to_date: '2026-06-06T00:00:00Z',
+    });
+    return { passed: evidence.hits.length > 0, detail: `hits=${evidence.hits.length}` };
+  });
+
+  return proofs;
+}
+
 async function runLive(selectedMode) {
   const config = selectedMode === 'live-full' ? fullConfig : firstProofConfig;
   const report = await core.queryCorpusQualityReport(db, config);
   const evaluation = core.evaluateCorpusQualityReport(report, config);
-  const queryProofs = selectedMode === 'live-first-proof' ? await runQueryProofs(db) : [];
+  const queryProofs =
+    selectedMode === 'live-first-proof' ? await runQueryProofs(db) : await runBroadQueryProofs(db);
   return {
     mode: selectedMode,
     passed: evaluation.passed && queryProofs.every((item) => item.passed),

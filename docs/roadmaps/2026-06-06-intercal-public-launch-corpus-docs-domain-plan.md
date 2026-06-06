@@ -770,6 +770,16 @@ exposure, dashboard, docs/Mintlify, marketing/SEO, domain routing, or release-au
 Workstream 4 is quiet from the corpus/query-proof boundary if the pass 6 gate accepts this small
 commit.
 
+Pass 7 closeout note: the strict quiet audit found one remaining full-corpus proof gap and fixed it
+in scope. `live-full` previously proved broad source-class/topic/date/entity/citation/
+contradiction/review gates but did not exercise a broad query path, while `live-first-proof` did.
+The corpus verifier now adds live-full query proofs for `get_delta("MLPerf")`,
+point-in-time `verify_claim` on the Mamba architecture claim before and after valid evidence, and
+`search_evidence("Executive Order 14110")`. This keeps the broad proof tied to the shared query
+layer rather than aggregate row counts alone. No source catalog rows, proof corpus rows,
+source-policy loosening, raw source-text exposure, dashboard, docs/Mintlify, marketing/SEO, domain
+routing, or release-audit work was added.
+
 ## Workstream 5: Public Intercal Knowledge Experience
 
 Goal: Replace the thin dashboard shell with the full read-only public product surface.

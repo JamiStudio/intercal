@@ -27,6 +27,32 @@ Policy is **snapshotted onto each `source_documents` row at ingest time**
 evidence unit. A later edit to the parent source row cannot retroactively change what was already
 stored or how an already-stored document may be served — the snapshot is the authority for that row.
 
+## Corpus source-class defaults
+
+The broad AI-history corpus uses source classes defined in
+[`../architecture/corpus-taxonomy.md`](../architecture/corpus-taxonomy.md). A source class is
+stored as `sources.metadata.source_class` when historical source rows are added; it complements,
+but does not replace, the broad `sources.source_type` column or the adapter name.
+
+Default posture is conservative:
+
+| Source class | Default policy | Notes |
+| --- | --- | --- |
+| `model_release` | `redistribution_allowed=false`, `summary_allowed=true`, `citation_only=false` | Per-origin license review required before raw/full-body public redistribution. |
+| `model_card` | `redistribution_allowed=false`, `summary_allowed=true`, `citation_only=false` | Registry metadata may be public, but card/body redistribution is verified per source. |
+| `lab_announcement` | `redistribution_allowed=false`, `summary_allowed=true`, `citation_only=false` | Tighten to citation-only when site terms or robots policy require it. |
+| `research_paper` | `redistribution_allowed=false`, `summary_allowed=true`, `citation_only=false` | Abstract-first by default; full PDF text requires explicit license review. |
+| `standard_spec` | `redistribution_allowed=false`, `summary_allowed=true`, `citation_only=false` | Per-spec license can loosen or tighten the default. |
+| `sdk_framework_release` | `redistribution_allowed=false`, `summary_allowed=true`, `citation_only=false` | Per-repo/package license review controls raw/full-body exposure. |
+| `benchmark` | `redistribution_allowed=false`, `summary_allowed=true`, `citation_only=false` | Dataset and leaderboard redistribution is never assumed from public availability. |
+| `regulation` | `redistribution_allowed=false`, `summary_allowed=true`, `citation_only=false` | Government/public-sector terms still need source-row notes; public output avoids legal-advice framing. |
+| `runtime_infrastructure` | `redistribution_allowed=false`, `summary_allowed=true`, `citation_only=false` | Release/source notes follow the same per-origin verification rule. |
+| `mediawiki_revision` | `redistribution_allowed=false`, `summary_allowed=true`, `citation_only=false` | Revision output defaults to cited diff summaries, not full article/diff body. |
+
+Any source row may tighten to `citation_only=true`. A row may loosen
+`redistribution_allowed` only when `license_spdx` or `license_notes` records the reason. Public
+pages and API/MCP answers must not claim class-wide redistribution rights from these defaults.
+
 ### Enforcement: before store (ingestion)
 
 `services/ingest/jobs.py::ingest_source`:

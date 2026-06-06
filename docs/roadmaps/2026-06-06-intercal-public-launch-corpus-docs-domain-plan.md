@@ -99,6 +99,11 @@ The first proof consumes the same adapters, provenance rules, and public query p
   Next coordinator action: poll in short intervals, record result in
   `docs/engineering/agents/orchestrator-logs/`, then dispatch Workstream 1 pass 2 after the pass 1
   commit/result lands.
+- 2026-06-06T12:08:00-04:00 — Workstream 1 pass 1 completed by this agent. Added the durable
+  corpus taxonomy in `docs/architecture/corpus-taxonomy.md`, aligned source-policy class defaults
+  and the baseline seeding report, and confirmed no seed or source-registry changes are required
+  for this pass because current vocabularies cover the taxonomy and only two adapters are live.
+  Future implementation remains in Workstreams 2 through 4.
 
 ## Workstream 1: Corpus Scope And Source Taxonomy
 
@@ -106,7 +111,7 @@ Goal: Define the final AI-history corpus taxonomy and source policy before addin
 
 Depends on:
 
-- [ ] Existing schema, source policy docs, and baseline seeding report.
+- [x] Existing schema, source policy docs, and baseline seeding report.
 
 Enables:
 
@@ -126,16 +131,16 @@ Primary areas:
 
 Implementation tasks:
 
-- [ ] Define final source classes: model releases, model cards, lab announcements, research papers, standards/specs, SDK/framework releases, benchmarks, regulation, runtime/deployment infrastructure, and Wikipedia/MediaWiki revisions.
-- [ ] Define source policy defaults per class, including redistribution, summary, citation-only, retention, and public display behavior.
-- [ ] Define corpus topic clusters for frontier models, open weights, model architecture, ML research, agent protocols, RAG/memory, developer tooling, evaluation/benchmarks, regulation/safety, and inference/runtime infrastructure.
-- [ ] Identify required seed vocab additions for entities, relationships, source types, and review statuses.
-- [ ] Document the first proof query set and the full-corpus acceptance query set.
+- [x] Define final source classes: model releases, model cards, lab announcements, research papers, standards/specs, SDK/framework releases, benchmarks, regulation, runtime/deployment infrastructure, and Wikipedia/MediaWiki revisions.
+- [x] Define source policy defaults per class, including redistribution, summary, citation-only, retention, and public display behavior.
+- [x] Define corpus topic clusters for frontier models, open weights, model architecture, ML research, agent protocols, RAG/memory, developer tooling, evaluation/benchmarks, regulation/safety, and inference/runtime infrastructure.
+- [x] Identify required seed vocab additions for entities, relationships, source types, and review statuses.
+- [x] Document the first proof query set and the full-corpus acceptance query set.
 
 Exit criteria:
 
-- [ ] Every source class has an owner, adapter strategy, source policy, and public display rule.
-- [ ] The full-corpus target is broader than the first proof and can drive implementation without rediscovery.
+- [x] Every source class has an owner, adapter strategy, source policy, and public display rule.
+- [x] The full-corpus target is broader than the first proof and can drive implementation without rediscovery.
 
 Suggested verification:
 

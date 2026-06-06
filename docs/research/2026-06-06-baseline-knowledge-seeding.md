@@ -1,9 +1,9 @@
 # Baseline Knowledge Seeding Report
 
 Date: 2026-06-06
-Status: Draft — recommendations for team discussion
+Status: Accepted direction for Workstream 1 taxonomy; adapter/backfill implementation remains future work
 Request: Propose approaches to seed Intercal with a focused baseline knowledge history (≥2 years; ideally back to the first major GPT release), using free scraping, existing LLM subscriptions, and trial cloud credits.
-Source scope: Live codebase (`services/`, `db/`, `packages/`), architecture docs, foundation report, Plan 02 closeout, resource budget, seed files.
+Source scope: Live codebase (`services/`, `db/`, `packages/`), architecture docs, foundation report, Plan 02 closeout, resource budget, seed files, Workstream 1 taxonomy pass.
 Owner: Team (Jamie + collaborators)
 
 ## Executive Summary
@@ -20,6 +20,11 @@ Three complementary strategies are recommended:
 
 The main engineering gap is **historical backfill**: current adapters (Wikidata recent changes, GitHub releases) are forward-looking. New adapters and a one-shot Cloud Run backfill job unlock the full timeline.
 
+Workstream 1 now locks the durable source-class and topic-cluster taxonomy in
+`docs/architecture/corpus-taxonomy.md`. This report remains the strategy source; the taxonomy doc is
+the operating contract for source rows, policy defaults, first-proof queries, and full-corpus
+acceptance queries.
+
 ## Question Being Answered
 
 > How should we seed Intercal with a solid, focused baseline knowledge history that agents can query via MCP/REST — at least two years back, ideally to the start of the GPT era — using free APIs/scraping and our current LLM/cloud credits?
@@ -32,11 +37,12 @@ Checked against the live repository (not roadmap claims):
 - `docs/architecture/pipeline.md` — pipeline stages and invariants
 - `docs/operations/source-policy.md` — redistribution/citation rules
 - `docs/operations/resource-budget.md` — LLM budget, cadence knobs
+- `docs/architecture/corpus-taxonomy.md` — source classes, topic clusters, seed vocabulary needs, query gates
 - `db/seeds/0001_entity_types.sql`, `0002_relationship_types.sql`, `0003_sources.sql` — current vocabularies and starter sources
 - `services/shared/src/intercal_shared/source_registry.py` — only two built-in adapters today
 - `docs/roadmaps/2026-05-21-intercal-plan-02-knowledge-pipeline.md` — Plan 02 marked complete
 
-Not checked live against production DB row counts or deployed cron state (assumption: live instance matches seed + incremental runs).
+Not checked live against production DB row counts or deployed cron state (assumption: live instance matches seed + incremental runs). No new external licensing or provider-limit facts were locked in during the taxonomy pass; source-policy defaults remain conservative until verified per source row.
 
 ## Current Project State
 
@@ -67,6 +73,46 @@ Not checked live against production DB row counts or deployed cron state (assump
 ### Gap
 
 Current adapters are **forward-looking**. Wikidata uses `rcend` cursors (only new changes). GitHub re-fetches releases but dedupes by hash. **No historical backfill path** exists yet — this is the main unlock for "back to ChatGPT launch."
+
+### Workstream 1 taxonomy lock
+
+The final source classes are:
+
+- `model_release`
+- `model_card`
+- `lab_announcement`
+- `research_paper`
+- `standard_spec`
+- `sdk_framework_release`
+- `benchmark`
+- `regulation`
+- `runtime_infrastructure`
+- `mediawiki_revision`
+
+Every future historical source row should set `sources.metadata.source_class` to one of these
+values, while keeping `sources.source_type` as the broad storage-level category and
+`sources.adapter_name` as executable adapter dispatch. Policy defaults for all classes are
+conservative: `redistribution_allowed=false`, `summary_allowed=true`, `citation_only=false`, with
+per-row license notes required before loosening redistribution. A row may always tighten to
+`citation_only=true`.
+
+The locked topic clusters are:
+
+- `frontier_models`
+- `open_weights`
+- `model_architecture`
+- `ml_research`
+- `agent_protocols`
+- `rag_memory`
+- `developer_tooling`
+- `evaluation_benchmarks`
+- `regulation_safety`
+- `inference_runtime_infrastructure`
+
+No seed changes are required for this taxonomy pass. Existing entity types, relationship types,
+and review-status columns cover the planned classes and clusters. Seeded topic rows should wait
+until coverage gates exist, so the database does not claim implemented coverage before Workstream
+4 proves it.
 
 ## What "Baseline" Should Mean
 
@@ -269,6 +315,26 @@ One cohesive narrative thread for the first backfill:
 
 Repeat for Claude, Gemini, Llama, MCP — five interlocking timeline spines.
 
+## Query Gates
+
+The first proof must pass these query shapes through real REST, SDK, and MCP paths using source
+documents, claims, evidence, resolved entities, relationships, and fact versions:
+
+- `get_entity("ChatGPT", at_date="2023-03-01")`
+- `get_entity("Claude", at_date="2024-03-01")`
+- `get_entity("Gemini", at_date="2024-02-15")`
+- `get_entity("Llama", at_date="2024-04-18")`
+- `get_freshness("MCP protocol")`
+- `get_delta("frontier LLMs", since="2023-03-01")`
+- `verify_claim("GPT-4 Turbo supports a 128k context window", as_of="2024-04-01")`
+- `search_evidence("EU AI Act high-risk", date_range="2023-01-01/2024-12-31")`
+
+Full-corpus acceptance adds query coverage across open-weight models, agent protocols, RAG and
+memory, regulation, inference/runtime infrastructure, benchmarks, and a coverage report grouped by
+source class, topic cluster, date range, entity coverage, citation depth, contradiction state, and
+review-needed rate. The complete acceptance query set lives in
+`docs/architecture/corpus-taxonomy.md`.
+
 ## Risks And Constraints
 
 - **LLM budget exhaustion** during bulk backfill — mitigate with tiered extraction and spine-first ordering
@@ -296,6 +362,7 @@ Repeat for Claude, Gemini, Llama, MCP — five interlocking timeline spines.
 
 - `docs/research/2026-05-21-intercal-foundation-report.md`
 - `docs/architecture/pipeline.md`
+- `docs/architecture/corpus-taxonomy.md`
 - `docs/operations/source-policy.md`
 - `docs/operations/resource-budget.md`
 - `db/seeds/0003_sources.sql`

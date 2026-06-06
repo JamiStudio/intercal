@@ -320,6 +320,11 @@ The first proof consumes the same adapters, provenance rules, and public query p
   API/MCP/SDK quality-gate surfaces, scripts/dev proof tooling, operations docs, related tests,
   Workstream 4 roadmap status, and changelog. Next coordinator action: poll in short intervals,
   record result, then dispatch mandatory Workstream 4 pass 2 after pass 1 lands.
+- 2026-06-06T13:55:56-04:00 — Workstream 4 pass 1 agent
+  `019e9e00-ba5c-71f0-8576-e5e9177979e6` was resumed after a continuation boundary, then closed as
+  a stale tool-session handle after repeated timed polls. Previous status was `pending_init`; no
+  result or changes were accepted from that handle. Next coordinator action: dispatch replacement
+  Workstream 4 pass 1 from current repo state.
 
 ## Workstream 1: Corpus Scope And Source Taxonomy
 
@@ -548,7 +553,7 @@ Goal: Prove the first timeline, then expand to broad AI-history coverage with me
 Depends on:
 
 - [x] Workstream 3 backfill execution.
-- [ ] Plan 03 REST/MCP/SDK query surfaces.
+- [x] Plan 03 REST/MCP/SDK query surfaces.
 
 Enables:
 
@@ -569,12 +574,12 @@ Primary areas:
 
 Implementation tasks:
 
-- [ ] Prove GPT, Claude, Gemini, Llama, and MCP timelines from November 2022 onward.
-- [ ] Prove `get_delta("frontier LLMs", since=2023-03-01)` returns cited, budget-bounded changes from backfilled evidence.
-- [ ] Prove `verify_claim` with `as_of` behavior against historical evidence and contradictions.
-- [ ] Expand from first proof into the full corpus taxonomy: model architecture, ML research, development cycles, agent/tooling shifts, benchmarks, regulation, infrastructure, and open-weight ecosystem changes.
-- [ ] Add corpus coverage and freshness gates for source class, topic cluster, date range, entity coverage, citation depth, contradiction state, and review-needed rate.
-- [ ] Add adversarial and stale-data checks for claims that changed over time.
+- [~] Prove GPT, Claude, Gemini, Llama, and MCP timelines from November 2022 onward.
+- [~] Prove `get_delta("frontier LLMs", since=2023-03-01)` returns cited, budget-bounded changes from backfilled evidence.
+- [~] Prove `verify_claim` with `as_of` behavior against historical evidence and contradictions.
+- [~] Expand from first proof into the full corpus taxonomy: model architecture, ML research, development cycles, agent/tooling shifts, benchmarks, regulation, infrastructure, and open-weight ecosystem changes.
+- [x] Add corpus coverage and freshness gates for source class, topic cluster, date range, entity coverage, citation depth, contradiction state, and review-needed rate.
+- [x] Add adversarial and stale-data checks for claims that changed over time.
 
 Exit criteria:
 
@@ -586,7 +591,19 @@ Suggested verification:
 - `pnpm test`
 - `pnpm py:test`
 - `node scripts/dev/verify-mcp.mjs <base>/api/mcp`
+- `node scripts/dev/verify-corpus-quality-gates.mjs seeded-proof`
+- `node scripts/dev/verify-corpus-quality-gates.mjs live-first-proof`
+- `node scripts/dev/verify-corpus-quality-gates.mjs live-full`
 - focused live REST/SDK checks against a seeded or production branch
+
+Pass 1 closeout note: Workstream 4 now has executable corpus quality gates in `@intercal/core` plus
+`scripts/dev/verify-corpus-quality-gates.mjs`. The gate measures source class, topic cluster, date
+range, required entity coverage, citation depth, contradiction state, and review-needed rate from
+canonical tables, and it includes rollback-only seeded proof data for GPT, Claude, Gemini, Llama,
+MCP, `get_delta("frontier LLMs", since=2023-03-01)`, point-in-time `verify_claim`, contradiction
+surfacing, adversarial wrong-value verification, and evidence search. This pass proves the quality
+gate/query machinery without claiming production corpus coverage. Live first-proof and full-taxonomy
+passes remain open until real backfilled evidence passes `live-first-proof` and `live-full`.
 
 ## Workstream 5: Public Intercal Knowledge Experience
 

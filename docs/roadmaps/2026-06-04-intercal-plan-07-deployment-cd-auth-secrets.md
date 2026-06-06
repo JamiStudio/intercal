@@ -333,6 +333,42 @@ resolved-principal seam (Plan 04 W6).
 
 Goal: Provable recovery of the canonical store.
 
+Orchestrator checkpoint (2026-06-06T05:19Z): Codex P1 dispatched as agent
+`019e9b5f-744c-75b3-b759-ef27dce507ea`. Ownership: backup/restore proof docs/scripts/package
+scripts/env examples/change fragment as needed; only overlaps Plan04 W7 on backup/restore, not the
+broader deployment-path stream. Next coordinator action: poll P1 to terminal, checkpoint result,
+then dispatch fresh-context P2.
+
+Return checkpoint (2026-06-06): P1 returned and pushed `77da587` (`ops: add backup restore proof
+runbook`), adding the backup/restore script, runbook, package aliases, operator env placeholders,
+`.backups/` ignore, topology/docs updates, and changelog fragment. Verification covered script
+syntax/help/dry-run, Biome on script/package, diff-check, and ignored backup artifacts. Real
+dump/restore/upload was not executed because `pg_dump`, `pg_restore`, and `aws` were unavailable on
+PATH and no throwaway Neon restore target DSN was available. Numeric gate passed (10 files, +539/-8),
+but this was an implementation pass; next coordinator action is W7 P2.
+
+P2 checkpoint (2026-06-06T06:09Z): fresh-context audit dispatched as agent
+`019e9bb9-3686-78d0-950a-2509d8a1182f`. Ownership: W7 backup script/docs/package/env/changelog only.
+Next coordinator action: poll to terminal, then gate W7.
+
+P2 return checkpoint (2026-06-06): P2 returned and pushed `3a56c40` (`ops: harden backup restore
+proof secrets`), fixing credential handling for the backup script: `pg_dump`/`pg_restore` now receive
+credentials via libpq `PG*` env, inherited `PG*` vars are cleared before child execution,
+credentialed URL flags are rejected, exact source/target DSN matches are rejected, and package
+command help works. Verification covered syntax, Biome, dry-run with no URL-shaped command output,
+package help, negative checks, and missing-tool checks without DSN output. This was a meaningful
+security fix; next coordinator action is W7 P3 confirm-quiet.
+
+P3 checkpoint (2026-06-06T06:20Z): confirm-quiet audit dispatched as agent
+`019e9bc3-d95a-7e50-a655-b6af0234bf25`. Ownership: W7 backup/restore only. Next coordinator action:
+poll to terminal and gate for closure.
+
+P3 return checkpoint (2026-06-06): P3 returned quiet with no file changes. Verification covered script
+syntax, Biome, package command help, dry-run/no-secret-output, credentialed URL rejection, same-target
+restore rejection, clean missing-tool failure, and R2 dry-run no-secret-output. W7 is closed. Real
+dump/restore/upload remains operator-gated because `pg_dump`, `pg_restore`, and `aws` are not on PATH
+and no throwaway restore target DSN was supplied.
+
 Status: [~] Implemented; live proof operator-gated (2026-06-06) — durable runbook and runnable proof path landed in
 `docs/operations/backups.md` + `scripts/ops/backup-restore.mjs` (`pnpm ops:backup`,
 `pnpm ops:restore-proof`, `pnpm backup:test`). The runbook documents the hosted Neon recovery lane
@@ -378,6 +414,41 @@ Pipeline and extract/synthesize CLIs now use the budgeted LLM constructor, honor
 the DB pool when `QUEUE_PROVIDER=postgres`. Verification: focused W8/shared tests, Python lint,
 Python typecheck (0 errors; existing warnings), and CLI help checks passed. No paid provider calls or
 live DB writes were run in this P1 pass.
+
+Coordinator gate (2026-06-06): P1 commit `5de4fbd` changed 14 files (+643/-37), so it fails the
+numeric close gate and must receive W8 P2 fresh-context audit.
+
+P2 checkpoint (2026-06-06T08:44Z): W8 P2 fresh-context audit dispatched as agent
+`019e9c0d-01f8-7590-b9e5-2e56ef4e9df9`. Ownership: Plan07 W8 budget enforcement only. Next
+coordinator action: poll to terminal and gate W8.
+
+P2 return checkpoint (2026-06-06): W8 P2 returned and pushed `5e10ef3`, fixing a real cross-process
+budget gap: the daily LLM request guard is now seeded from same-day `provider_usage_events`, so
+separate worker invocations do not reset the shared cross-provider daily budget. Usage writes remain
+success-only. Verification covered focused pytest, ruff, pyright, diff-check, and secret scan; no paid
+provider calls or live DB writes were run. This was a meaningful fix; next coordinator action is W8
+P3 confirm-quiet.
+
+P3 checkpoint (2026-06-06T09:00Z): W8 P3 confirm-quiet dispatched as agent
+`019e9c13-708c-7100-9f05-f8faa6272438`. Ownership: Plan07 W8 budget enforcement only. Next
+coordinator action: poll to terminal and gate W8.
+
+P3 return checkpoint (2026-06-06): W8 P3 returned and pushed `77dfdb5`, fixing a real
+budget-window bug by using half-open day/month windows for LLM request seeding and
+`observability_provider_consumption` auto-degrade. Prior periods ending exactly at midnight no
+longer consume the next UTC day/month budget. Verification covered focused pytest, ruff, pyright,
+pnpm lint, diff-check, and secret scan. No paid provider calls, live DB writes, or migration runs were
+performed without a verified throwaway DB target. This was a meaningful fix; next coordinator action
+is W8 P4 confirm-quiet.
+
+P4 checkpoint (2026-06-06T09:17Z): W8 P4 confirm-quiet dispatched as agent
+`019e9c18-9798-7233-81c6-74cab10bf54f`. Ownership: Plan07 W8 budget enforcement only. Next
+coordinator action: poll to terminal and gate W8.
+
+P4 return checkpoint (2026-06-06): W8 P4 returned quiet with no changes. Verification covered focused
+shared/provider budget pytest, full Python tests (444), Python lint/typecheck, TS test/typecheck/lint,
+diff-check, and secret scan. `pnpm db:check` remains blocked by unapplied migrations 0026-0031 on the
+configured DB, and no paid provider calls/live writes were run. W8 is closed.
 
 Implementation tasks:
 

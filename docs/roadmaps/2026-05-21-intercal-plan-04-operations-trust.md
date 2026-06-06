@@ -328,6 +328,33 @@ agent `019e9bb8-e241-7221-9de5-44bf368be058`. Ownership: current interleaved W4 
 subscription WIP, generated contracts, tests/docs/checkpoints. Next coordinator action: poll to
 terminal; if it commits, dispatch W4 P2 from the integrated commit.
 
+Audit-2 checkpoint (2026-06-06): W4 P2 agent `019e9bc2-5236-71b2-892e-239f4d29269b` found and fixed
+a real duplicate-risk gap in commit `2833f76`: SDK feedback POSTs are no longer automatically retried
+after a possible server commit. Verification covered SDK/API/core/contracts/scoped Biome/diff-check;
+DB migration proof remains unavailable without a verified throwaway DB target. W4 P3 confirm-quiet
+dispatched as agent `019e9bc8-a57d-79d0-b506-9df23d3677a2`.
+
+P3 checkpoint (2026-06-06): W4 P3 found and fixed another real gap in commit `7ada730`: malformed
+non-UUID `source` feedback targets now reject before querying the UUID-backed `sources.id` column,
+keeping failures on the bounded `invalid_request` path. Verification covered core/API/SDK/contracts/
+scoped Biome/diff-check. Next coordinator action: W4 P4 confirm-quiet.
+
+P4 checkpoint (2026-06-06): W4 P4 found and fixed another real gap in commit `dd5fb8f`: caller
+controlled `x-request-id` correlation metadata is now trimmed, empty values are ignored, and values
+over 128 chars or containing control characters are rejected before review/audit rows are stored.
+Verification covered API/core/SDK/contracts/scoped Biome/diff-check. Next coordinator action: W4 P5
+confirm-quiet.
+
+P5 checkpoint (2026-06-06T06:48Z): W4 P5 confirm-quiet dispatched as agent
+`019e9bd5-7765-7923-8dde-59feb027b852`. Ownership: W4 feedback/review only. Next coordinator action:
+poll to terminal and gate W4.
+
+P5 return checkpoint (2026-06-06): W4 P5 returned quiet with no changes. Verification covered API
+feedback tests, SDK tests, core tests, core/API/SDK typechecks, scoped Biome, and diff-check.
+`pnpm contracts:check` could not be used as a W4 closeout proof because active W5 TypeSpec doc drift
+created generated side effects, and `pnpm db:check` remains blocked by unapplied migrations 0026-0029
+on the configured DB. W4 is closed.
+
 Integration return (2026-06-06): combined W4/W5 commit completed. Verification passed for
 `pnpm contracts:build`, `pnpm contracts:check`, touched package typechecks/tests, full package
 `pnpm build`, `pnpm py:typecheck` (0 errors, existing warnings), scoped W4/W5 Biome checks, and
@@ -423,6 +450,68 @@ agent `019e9bb8-e241-7221-9de5-44bf368be058`. Ownership: current interleaved W4 
 subscription WIP, generated contracts, tests/docs/checkpoints. Next coordinator action: poll to
 terminal; if it commits, dispatch W5 P2 from the integrated commit.
 
+Audit-2 checkpoint (2026-06-06): W5 P2 agent `019e9bc2-9b37-70c1-a770-c27365a1c734` found and fixed
+real dispatch-matching gaps in commit `42d008c`: target-kind validation, non-empty claim patterns, no
+unrelated claim-pattern broadcasts, and inactive subscriptions blocked from polling/delivery.
+Verification covered core/API/contracts/scoped Biome/diff-check; migration 0029 still lacks
+throwaway DB proof. W5 P3 confirm-quiet dispatched as agent `019e9bc8-e10e-7d90-99b7-6d475080b6e9`.
+
+P3 status checkpoint (2026-06-06): W5 P3 agent `019e9bc8-e10e-7d90-99b7-6d475080b6e9` found another
+real gap: REST `/v1/subscriptions/dispatch` could enqueue notifications across all matching active
+subscriptions for any `manage:subscriptions` key instead of scoping dispatch to the caller's
+subscriptions. The agent reported a fix in progress and verification, but terminated before
+committing/pushing. Next coordinator action: replace with a focused W5 P3 completion worker to finish,
+stage, commit, and push only the W5 fix.
+
+Replacement checkpoint (2026-06-06T06:35Z): W5 P3 completion worker dispatched as agent
+`019e9bce-6185-7e63-8c13-83fb828dae8e`. Ownership: finish and commit the owner-scoped dispatch fix
+only. Next coordinator action: poll to terminal, then gate W5.
+
+P3 return checkpoint (2026-06-06): replacement worker returned and pushed `33f97b0`, scoping REST
+subscription dispatch to the authenticated API-key owner while requiring trusted internal fan-out to
+choose `internal_all_active` with a reason. Verification covered core/API/contracts/scoped
+Biome/diff-check. `pnpm db:check` still reports unapplied migrations 0026-0029 on the configured DB
+and full lint is blocked by unrelated `review.ts` regex findings. This was a meaningful fix; next
+coordinator action is W5 P4 confirm-quiet.
+
+P4 checkpoint (2026-06-06T06:48Z): W5 P4 confirm-quiet dispatched as agent
+`019e9bd5-b01b-7b70-bd7f-be60d76c2a52`. Ownership: W5 subscriptions only. Next coordinator action:
+poll to terminal and gate W5.
+
+P4 return checkpoint (2026-06-06): W5 P4 found and fixed a contract/docs honesty gap in `37f2b6a`:
+the public TypeSpec/OpenAPI description for `POST /v1/subscriptions/dispatch` now states REST
+dispatch only enqueues notifications for subscriptions owned by the authenticated API key.
+Verification covered contracts build/check, focused core/API tests, shared typecheck, and diff-check.
+Next coordinator action: W5 P5 confirm-quiet.
+
+P5 checkpoint (2026-06-06T07:01Z): W5 P5 confirm-quiet dispatched as agent
+`019e9bda-fa18-7833-8cb9-9e21baa7f76d`. Ownership: W5 subscriptions only. Next coordinator action:
+poll to terminal and gate W5.
+
+P5 return checkpoint (2026-06-06): W5 P5 found and fixed another real validation gap in `db5ed21`:
+malformed UUID-backed subscription inputs now reject before reaching Postgres UUID columns, keeping
+create, dispatch, poll, and delete failures on the bounded `invalid_request` path. Verification covered
+core/API/contracts/scoped Biome/diff-check. `pnpm db:check` still reports unapplied migrations
+0026-0029 on the configured DB. Next coordinator action: W5 P6 confirm-quiet.
+
+P6 checkpoint (2026-06-06T07:09Z): W5 P6 confirm-quiet dispatched as agent
+`019e9bdf-7f55-7f02-86b5-087176db8a62`. Ownership: W5 subscriptions only. Next coordinator action:
+poll to terminal and gate W5.
+
+P6 return checkpoint (2026-06-06): W5 P6 found and fixed another real validation/security gap in
+`6848d54`: unknown nested subscription target and dispatch fields are rejected instead of ignored,
+and webhook URL/secret fields are rejected on polling subscriptions so unused secrets are not hashed
+or persisted. Verification covered core/API typecheck+tests, contracts:check, scoped Biome, and
+diff-check. Next coordinator action: W5 P7 confirm-quiet.
+
+P7 checkpoint (2026-06-06T07:19Z): W5 P7 confirm-quiet dispatched as agent
+`019e9be6-28ae-7a71-978d-3784c1ec0ca5`. Ownership: W5 subscriptions only. Next coordinator action:
+poll to terminal and gate W5.
+
+P7 return checkpoint (2026-06-06): W5 P7 returned quiet with no changes. Verification covered core
+tests (113), API tests (63), core/API typechecks, contracts:check, scoped Biome, and diff-check.
+`pnpm db:check` remains blocked by unapplied migrations 0026-0029 on the configured DB. W5 is closed.
+
 Integration return (2026-06-06): combined W4/W5 commit completed with generated TypeSpec artifacts
 checked after staging. Verification passed for `pnpm contracts:build`, `pnpm contracts:check`,
 touched package typechecks/tests, full package `pnpm build`, `pnpm py:typecheck` (0 errors, existing
@@ -479,6 +568,37 @@ Orchestrator checkpoint (2026-06-06T07:27Z): W6 P1 dispatched as agent
 `019e9be9-960c-7b81-972f-9d212280dda6`. Ownership: real health/quality/cost/freshness metrics via
 scripts/core/db/docs/tests as needed; no W4/W5/W7/W8 work. Next coordinator action: poll to terminal,
 checkpoint result, then dispatch W6 P2.
+
+P2 checkpoint (2026-06-06T07:47Z): W6 P2 fresh-context audit dispatched as agent
+`019e9bf4-042b-7f00-8acc-e7fc71eedb85`. Ownership: W6 observability only. Next coordinator action:
+poll to terminal and gate W6.
+
+P2 return checkpoint (2026-06-06): W6 P2 returned and pushed `01e8591`, fixing telemetry honesty:
+provider consumption now stays `NULL`/`unavailable` when no real provider usage event exists, budget
+allowance rows include documented provider signals, the core snapshot includes usage latency, and CLI
+truncation uses ASCII. Verification covered CLI help/print-sql, core observability tests/typecheck,
+scoped Biome, and diff-check. `pnpm db:check` remains unavailable without a verified DB target. This
+was a meaningful fix; next coordinator action is W6 P3 confirm-quiet.
+
+P3 checkpoint (2026-06-06T08:01Z): W6 P3 confirm-quiet dispatched as agent
+`019e9bf9-b480-7f50-8e28-5ac04de52545`. Ownership: W6 observability only. Next coordinator action:
+poll to terminal and gate W6.
+
+P3 return checkpoint (2026-06-06): W6 P3 found and fixed another real gap in `c613db4`:
+`provider_usage_events` is now schema-enforced append-only with update/delete/truncate guards, matching
+the documented telemetry invariant. Verification covered CLI help/print-sql, core observability
+tests/typecheck, scoped Biome, and diff-check. `pnpm db:check` reports unapplied migrations 0026-0030
+on the configured DB. Next coordinator action: W6 P4 confirm-quiet.
+
+P4 checkpoint (2026-06-06T08:08Z): W6 P4 confirm-quiet dispatched as agent
+`019e9bfd-db73-73e1-9390-0316e45630d9`. Ownership: W6 observability only. Next coordinator action:
+poll to terminal and gate W6.
+
+P4 return checkpoint (2026-06-06): W6 P4 returned quiet with no changes. Verification covered
+`ops:health` help/print-sql, core observability tests (116), core typecheck, scoped Biome, and
+diff-check. `pnpm db:check` was not run because `DATABASE_URL` was unset, `.env` is present but
+unverified, Docker is not on PATH, and the migration check creates `_migrations` if missing, so it is
+not a safe no-op against an unknown mutable DB. W6 is closed.
 
 Status: [x] **Complete** (2026-06-06). Observability now starts from SQL-owned views and a
 Windows-friendly operator CLI rather than dashboard-only cards. Migration `0030_observability.sql`
@@ -553,6 +673,40 @@ Orchestrator checkpoint (2026-06-06T08:16Z): W7 P1 dispatched as agent
 `019e9c01-33e2-7783-a591-b811cf81dc36`. Ownership: Plan04 W7 deployment paths/backups only; use
 closed Plan07 W7 as backup/restore source truth and do not duplicate or contradict it. Next
 coordinator action: poll to terminal, checkpoint result, then dispatch W7 P2.
+
+P1 return checkpoint (2026-06-06): W7 P1 returned and pushed `f60fc34`, adding
+`docs/operations/deployment.md`, updating deployment topology/roadmap/changelog, and fixing
+`scripts/ops/deploy-cloud-run.mjs` to tolerate pnpm's `--` separator so the documented dry-run works.
+Verification covered docs readback, backup dry-run/help, deploy dry-run, scoped Biome, diff-check,
+and staged secret scan. Live provider/DNS checks and real restore proof remain operator-gated. Next
+coordinator action: W7 P2 fresh-context audit.
+
+P2 checkpoint (2026-06-06T08:29Z): W7 P2 fresh-context audit dispatched as agent
+`019e9c07-d445-7312-9db3-085ead4c568b`. Ownership: Plan04 W7 deployment paths/backups only. Next
+coordinator action: poll to terminal and gate W7.
+
+P2 return checkpoint (2026-06-06): W7 P2 found and fixed a real deployment-doc gap in `77fb198`:
+the Vercel Root Directory is now explicit so the package-local `packages/dashboard/vercel.json` build
+contract is not missed. Verification covered backup/deploy dry-runs, diff-check, and secret scan.
+Live provider/DNS/restore proofs remain operator-gated. Next coordinator action: W7 P3 confirm-quiet.
+
+P3 checkpoint (2026-06-06T08:39Z): W7 P3 confirm-quiet dispatched as agent
+`019e9c0b-bf93-7400-adc0-5ed18fc91a22`. Ownership: Plan04 W7 deployment paths/backups only. Next
+coordinator action: poll to terminal and gate W7.
+
+P3 return checkpoint (2026-06-06): W7 P3 found and fixed a real consistency gap in `218b52a`: the
+Cloud Run deploy script comment now correctly says the Cloud Run Job/Artifact Registry region comes
+from `CLOUD_RUN_REGION`, not `GCLOUD_REGION`. Verification covered backup/deploy dry-runs, node check,
+Biome, diff-check, and scoped secret scan. Live provider/DNS/restore proofs remain operator-gated.
+Next coordinator action: W7 P4 confirm-quiet.
+
+P4 checkpoint (2026-06-06T08:51Z): W7 P4 confirm-quiet dispatched as agent
+`019e9c0f-992f-7f62-9909-e87dbc6a3f67`. Ownership: Plan04 W7 deployment paths/backups only. Next
+coordinator action: poll to terminal and gate W7.
+
+P4 return checkpoint (2026-06-06): W7 P4 returned quiet with no changes. Verification covered
+deploy-cloud-run dry-run, backup dry-run, restore-proof help, node check, Biome, W7 diff-check, and
+secret scan. Live provider/DNS/restore proofs remain honestly operator-gated. W7 is closed.
 
 P1 closeout (2026-06-06): W7 deployment-path docs landed. `docs/operations/deployment.md` now
 documents the primary hosted path (Vercel app+REST+MCP, Neon, GitHub Actions scheduled pipeline,
@@ -630,6 +784,40 @@ local CLI auth, secret handoff, and rotation. It links to the existing deploymen
 budget runbooks instead of duplicating lower-level provider flows or values. Live provider calls
 remain operator-gated when authenticated accounts, controlled domain, throwaway Neon branch, or quota
 approval are not available.
+
+Coordinator gate (2026-06-06): P1 commit `d587745` changed 3 files (+471/-6), a large first-pass
+runbook addition. Next coordinator action: W8 P2 fresh-context audit.
+
+P2 checkpoint (2026-06-06T09:39Z): W8 P2 fresh-context audit dispatched as agent
+`019e9c26-3745-7082-a869-b0b57f37de1a`. Ownership: account/CLI setup runbook only. Next coordinator
+action: poll to terminal and gate W8.
+
+P2 return checkpoint (2026-06-06): W8 P2 found and fixed a real command-accuracy gap in `c1a8a42`:
+`scripts/ops/secrets-fanout.mjs` now ignores pnpm's standalone `--` separator, so documented
+`pnpm ops:secrets-fanout -- --dry-run` proof commands work. Verification covered secrets-fanout
+dry-runs, backup/deploy/health/restore help paths, diff-check, and secret scan. Live provider
+calls/writes remain operator-gated. Next coordinator action: W8 P3 confirm-quiet.
+
+P3 checkpoint (2026-06-06T09:52Z): W8 P3 confirm-quiet dispatched as agent
+`019e9c2c-f28a-7fb3-9f2a-e27f84023bfd`. Ownership: account/CLI setup runbook and directly
+referenced CLI/script surfaces only. Next coordinator action: poll to terminal and gate W8.
+
+P3 return checkpoint (2026-06-06): W8 P3 found and fixed another real command-accuracy gap in
+`fbcba08`: `scripts/ops/health.mjs` now ignores pnpm's standalone `--` separator, so documented
+`pnpm ops:health -- --section ...` proof commands work. Verification covered health CLI help,
+section listing, section SQL printing, node check, Biome, diff-check, and secret scan. Live health
+sections still require a verified `DATABASE_URL`. This was a meaningful command fix; next
+coordinator action is W8 P4 confirm-quiet.
+
+P4 checkpoint (2026-06-06T10:02Z): W8 P4 confirm-quiet dispatched as agent
+`019e9c31-9ce9-7732-a027-29b4508b8820`. Ownership: account/CLI setup runbook and directly
+referenced CLI/script surfaces only. Next coordinator action: poll to terminal and gate W8.
+
+P4 return checkpoint (2026-06-06): W8 P4 returned quiet with no changes. Verification covered
+`.env` ignore status, health list/print-sql paths, backup help, deploy dry-run, secrets-fanout
+target/all dry-runs, and diff-check. Live DNS/TLS, provider listings/resource checks, and DB-backed
+health/db checks remain operator-gated because they require authenticated provider access and/or a
+verified database target.
 
 Depends on:
 

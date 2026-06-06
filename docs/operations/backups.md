@@ -38,6 +38,9 @@ Restore proof target:
 
 - `RESTORE_DATABASE_URL` must point at a fresh throwaway Neon branch or equivalent target database.
   Never set it to production.
+- Do not pass credentialed database URLs as command-line arguments; package managers and process
+  listings can expose arguments. Set `DATABASE_URL_UNPOOLED` / `DATABASE_URL` and
+  `RESTORE_DATABASE_URL` in the operator shell or `.env` instead.
 
 Optional second-copy upload:
 
@@ -74,7 +77,7 @@ pnpm ops:backup -- --upload-r2
 The script runs:
 
 ```text
-pg_dump --format=custom --no-owner --no-privileges --file <dump> <source-url>
+PG* connection env + pg_dump --format=custom --no-owner --no-privileges --file <dump>
 ```
 
 It writes under `.backups/` by default. `.backups/` must remain gitignored; do not stage dumps.
@@ -93,17 +96,26 @@ with credentials passed through process env, never command arguments.
 pnpm ops:restore-proof -- --dump .backups\intercal-YYYY-MM-DDTHH-MM-SS-sssZ.dump
 ```
 
-Or pass the target explicitly without writing it into `.env`:
+Or set the target only for the current PowerShell session instead of writing it into `.env`:
 
 ```powershell
-node scripts/ops/backup-restore.mjs restore-proof --dump .backups\intercal-YYYY-MM-DDTHH-MM-SS-sssZ.dump --target-url "<throwaway-branch-dsn>"
+$env:RESTORE_DATABASE_URL = "<throwaway-branch-dsn>"
+node scripts/ops/backup-restore.mjs restore-proof --dump .backups\intercal-YYYY-MM-DDTHH-MM-SS-sssZ.dump
 ```
 
 The restore command is:
 
 ```text
-pg_restore --clean --if-exists --no-owner --no-privileges --single-transaction --exit-on-error --dbname <target-url> <dump>
+PG* connection env + pg_restore --clean --if-exists --no-owner --no-privileges --single-transaction --exit-on-error --dbname <database> <dump>
 ```
+
+The CLI translates Postgres URLs into libpq `PG*` environment variables before invoking
+`pg_dump` / `pg_restore`, so database URLs and passwords are not passed as child-process
+arguments. It also rejects credentialed `--source-url` / `--target-url` arguments, because package
+managers and process listings can expose command-line arguments before the script can redact them.
+`--source-url` / `--target-url` are only for non-secret local URLs. `restore-proof` also rejects
+runs when the target URL exactly matches `DATABASE_URL_UNPOOLED` or `DATABASE_URL`; create a fresh
+throwaway branch instead.
 
 4. The script then runs a read-only heartbeat against the restored target. It verifies:
 
@@ -125,7 +137,8 @@ node scripts/ops/backup-restore.mjs restore-proof --dump .backups\intercal-YYYY-
 Or against any configured target:
 
 ```powershell
-node scripts/ops/backup-restore.mjs health --target-url "<target-dsn>"
+$env:RESTORE_DATABASE_URL = "<target-dsn>"
+node scripts/ops/backup-restore.mjs health
 ```
 
 ## Neon PITR Recovery

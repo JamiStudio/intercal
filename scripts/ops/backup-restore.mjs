@@ -20,6 +20,26 @@ const REPO_ROOT = resolve(HERE, '..', '..');
 const ENV_PATH = resolve(REPO_ROOT, '.env');
 const DEFAULT_BACKUP_DIR = resolve(REPO_ROOT, '.backups');
 
+const LIBPQ_CONNECTION_ENV_NAMES = [
+  'PGAPPNAME',
+  'PGCHANNELBINDING',
+  'PGCONNECT_TIMEOUT',
+  'PGDATABASE',
+  'PGHOST',
+  'PGOPTIONS',
+  'PGPASSWORD',
+  'PGPORT',
+  'PGSERVICE',
+  'PGSERVICEFILE',
+  'PGSSLCERT',
+  'PGSSLCOMPRESSION',
+  'PGSSLKEY',
+  'PGSSLMODE',
+  'PGSSLROOTCERT',
+  'PGTARGETSESSIONATTRS',
+  'PGUSER',
+];
+
 const HEARTBEAT_TABLES = [
   '_migrations',
   'sources',
@@ -58,9 +78,9 @@ function usage(message, exitCode = 2) {
   console.error(
     [
       'Usage:',
-      '  backup-restore backup [--source-url <url>] [--output-dir <dir>] [--upload-r2] [--dry-run]',
-      '  backup-restore restore-proof --dump <file> --target-url <url> [--skip-restore]',
-      '  backup-restore health --target-url <url>',
+      '  backup-restore backup [--source-url <non-secret-local-url>] [--output-dir <dir>] [--upload-r2] [--dry-run]',
+      '  backup-restore restore-proof --dump <file> [--target-url <non-secret-local-url>] [--skip-restore]',
+      '  backup-restore health [--target-url <non-secret-local-url>]',
       '',
       'Env fallback:',
       '  source-url: DATABASE_URL_UNPOOLED, then DATABASE_URL',
@@ -100,6 +120,23 @@ function envValue(env, ...names) {
   return undefined;
 }
 
+function credentialSafeUrlFlag(flags, name) {
+  const value = flags[name];
+  if (!value || value === true) return undefined;
+  let parsed;
+  try {
+    parsed = new URL(value);
+  } catch {
+    return value;
+  }
+  if (parsed.password) {
+    throw new Error(
+      `do not pass credentialed database URLs via --${name}; set the documented environment variable instead`,
+    );
+  }
+  return value;
+}
+
 function timestamp() {
   return new Date().toISOString().replace(/[:.]/g, '-');
 }
@@ -111,6 +148,84 @@ function redact(text) {
     .replace(/(AWS_SECRET_ACCESS_KEY=)[^\s]+/gi, '$1***')
     .replace(/(S3_SECRET_ACCESS_KEY=)[^\s]+/gi, '$1***')
     .replace(/(token=)[^&\s]+/gi, '$1***');
+}
+
+function postgresEnvFromUrl(databaseUrl) {
+  let parsed;
+  try {
+    parsed = new URL(databaseUrl);
+  } catch {
+    throw new Error('invalid Postgres connection URL');
+  }
+  if (!['postgres:', 'postgresql:'].includes(parsed.protocol)) {
+    throw new Error('connection URL must use postgres:// or postgresql://');
+  }
+
+  const env = {
+    PGHOST: parsed.hostname,
+    PGDATABASE: decodeURIComponent(parsed.pathname.replace(/^\/+/, '')),
+    PGUSER: decodeURIComponent(parsed.username),
+  };
+  if (!env.PGDATABASE) {
+    throw new Error('connection URL must include a database name');
+  }
+  if (parsed.port) env.PGPORT = parsed.port;
+  if (parsed.password) env.PGPASSWORD = decodeURIComponent(parsed.password);
+
+  const queryEnv = {
+    application_name: 'PGAPPNAME',
+    channel_binding: 'PGCHANNELBINDING',
+    connect_timeout: 'PGCONNECT_TIMEOUT',
+    options: 'PGOPTIONS',
+    sslcert: 'PGSSLCERT',
+    sslcompression: 'PGSSLCOMPRESSION',
+    sslkey: 'PGSSLKEY',
+    sslmode: 'PGSSLMODE',
+    sslrootcert: 'PGSSLROOTCERT',
+    target_session_attrs: 'PGTARGETSESSIONATTRS',
+  };
+  for (const [param, envName] of Object.entries(queryEnv)) {
+    const value = parsed.searchParams.get(param);
+    if (value) env[envName] = value;
+  }
+
+  return env;
+}
+
+function childEnvWithPostgres(pgEnv) {
+  const childEnv = { ...process.env };
+  for (const name of LIBPQ_CONNECTION_ENV_NAMES) {
+    delete childEnv[name];
+  }
+  return {
+    ...childEnv,
+    ...pgEnv,
+  };
+}
+
+function normalizedUrl(value) {
+  try {
+    const parsed = new URL(value);
+    parsed.protocol = parsed.protocol.toLowerCase();
+    parsed.hostname = parsed.hostname.toLowerCase();
+    return parsed.toString();
+  } catch {
+    return value;
+  }
+}
+
+function assertRestoreTargetIsNotSource(env, targetUrl) {
+  const sourceUrls = [envValue(env, 'DATABASE_URL_UNPOOLED'), envValue(env, 'DATABASE_URL')].filter(
+    Boolean,
+  );
+  const normalizedTarget = normalizedUrl(targetUrl);
+  for (const sourceUrl of sourceUrls) {
+    if (normalizedUrl(sourceUrl) === normalizedTarget) {
+      throw new Error(
+        'restore target matches a configured source database URL; create a fresh throwaway branch and set RESTORE_DATABASE_URL to that target',
+      );
+    }
+  }
 }
 
 async function runTool(command, args, options = {}) {
@@ -131,7 +246,9 @@ function backupPath(outputDir) {
 }
 
 async function backup(env, flags) {
-  const sourceUrl = flags['source-url'] || envValue(env, 'DATABASE_URL_UNPOOLED', 'DATABASE_URL');
+  const sourceUrl =
+    credentialSafeUrlFlag(flags, 'source-url') ||
+    envValue(env, 'DATABASE_URL_UNPOOLED', 'DATABASE_URL');
   if (!sourceUrl) usage('backup requires --source-url or DATABASE_URL_UNPOOLED/DATABASE_URL.');
 
   const outputDir = resolve(
@@ -140,23 +257,19 @@ async function backup(env, flags) {
   );
   const out = backupPath(outputDir);
   const dryRun = Boolean(flags['dry-run']);
+  const pgEnv = postgresEnvFromUrl(sourceUrl);
 
   console.log(`Intercal backup${dryRun ? ' (DRY RUN)' : ''}`);
   console.log(`Output: ${out}`);
   if (dryRun) {
     console.log(
-      'Would run: pg_dump --format=custom --no-owner --no-privileges --file <output> <source-url>',
+      'Would run: PG* connection env + pg_dump --format=custom --no-owner --no-privileges --file <output>',
     );
   } else {
     mkdirSync(outputDir, { recursive: true });
-    await runTool('pg_dump', [
-      '--format=custom',
-      '--no-owner',
-      '--no-privileges',
-      '--file',
-      out,
-      sourceUrl,
-    ]);
+    await runTool('pg_dump', ['--format=custom', '--no-owner', '--no-privileges', '--file', out], {
+      env: childEnvWithPostgres(pgEnv),
+    });
     const size = statSync(out).size;
     console.log(`Backup written: ${out} (${size} bytes)`);
   }
@@ -201,26 +314,35 @@ async function uploadR2(env, filePath, dryRun) {
 
 async function restoreProof(env, flags) {
   const dump = flags.dump ? resolve(REPO_ROOT, flags.dump) : undefined;
-  const targetUrl = flags['target-url'] || envValue(env, 'RESTORE_DATABASE_URL');
+  const targetUrl =
+    credentialSafeUrlFlag(flags, 'target-url') || envValue(env, 'RESTORE_DATABASE_URL');
   if (!dump) usage('restore-proof requires --dump <file>.');
   if (!existsSync(dump)) usage(`dump does not exist: ${dump}`);
   if (!targetUrl) usage('restore-proof requires --target-url or RESTORE_DATABASE_URL.');
+  assertRestoreTargetIsNotSource(env, targetUrl);
 
   console.log('Intercal restore proof');
   console.log(`Dump: ${dump}`);
   if (!flags['skip-restore']) {
     console.log('Restoring into target database (target URL redacted).');
-    await runTool('pg_restore', [
-      '--clean',
-      '--if-exists',
-      '--no-owner',
-      '--no-privileges',
-      '--single-transaction',
-      '--exit-on-error',
-      '--dbname',
-      targetUrl,
-      dump,
-    ]);
+    const pgEnv = postgresEnvFromUrl(targetUrl);
+    await runTool(
+      'pg_restore',
+      [
+        '--clean',
+        '--if-exists',
+        '--no-owner',
+        '--no-privileges',
+        '--single-transaction',
+        '--exit-on-error',
+        '--dbname',
+        pgEnv.PGDATABASE,
+        dump,
+      ],
+      {
+        env: childEnvWithPostgres(pgEnv),
+      },
+    );
     console.log('Restore completed.');
   } else {
     console.log('Skipping restore; running heartbeat only.');
@@ -296,7 +418,9 @@ async function heartbeat(databaseUrl) {
 }
 
 async function health(env, flags) {
-  const targetUrl = flags['target-url'] || envValue(env, 'RESTORE_DATABASE_URL', 'DATABASE_URL');
+  const targetUrl =
+    credentialSafeUrlFlag(flags, 'target-url') ||
+    envValue(env, 'RESTORE_DATABASE_URL', 'DATABASE_URL');
   if (!targetUrl) usage('health requires --target-url, RESTORE_DATABASE_URL, or DATABASE_URL.');
   await heartbeat(targetUrl);
 }
@@ -306,6 +430,7 @@ async function main() {
   if (!command || command === '--help' || command === 'help') usage(undefined, 0);
   const env = loadDotenv();
   const flags = parseFlags(rest);
+  if (flags.help) usage(undefined, 0);
   if (command === 'backup') return backup(env, flags);
   if (command === 'restore-proof') return restoreProof(env, flags);
   if (command === 'health') return health(env, flags);

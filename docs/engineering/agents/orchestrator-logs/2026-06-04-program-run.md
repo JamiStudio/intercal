@@ -122,7 +122,18 @@ Sequence: Plan 07 W1 (secrets) first → then auth cluster (Plan04 W1 + Plan07 W
 | t72 | 07/W6 | P1 | Opus | a7e9c8e1573aab9e5 | returned OK; MCP OAuth2.1 resource server (jose JWKS, RFC9728 PRM, WWW-Auth 401/403, RFC8707 aud binding); AS = env seam (deferred honestly); anon-read preserved when no AS; spec-verified 2025-06-18/11-25; LIVE 7/7; 88 mcp tests | ea5b8b0 | ~12f +1336 | gate P2: spec compliance + no bypass |
 | t73 | 07/W6 | P2 | Opus | a38a8453f357e0b89 | returned OK; fixed JWS alg-allowlist gap (alg-substitution; PS256-vs-RSA); MCP_OAUTH_ALGORITHMS default RS256; no-bypass+PRM+aud confirmed; LIVE 8/8 | dba6b87 | 9f +169/-15 | security fix → P3 confirm-quiet |
 | t74 | 07/W6 | P3 | Opus | a940b6e4ba6b30ab0 | QUIET (only trivial lint sweep) → **W6 CLOSED** (MCP OAuth RS spec-correct, no bypass); LIVE 8/8 | f04d053 | 1f | **AUTH COMPLETE** (REST keys + MCP OAuth) → worker CD |
-| t75 | 07/W3 | P1 | Opus | — | dispatched (Actions scheduled pipeline CD) | — | — | gate → P2 |
+| t75 | 07/W3 | P1 | Opus | a9afb155f58c581bc | returned OK; scheduled CD (6h cron, caps, concurrency, perms, ADC); PROVEN via gh runs GREEN on Neon branch + PROD (idempotent, 5 new docs, no dupes); flagged W4 Dockerfile extras gap | 907b1d9,3b23bf3,54a347b | 5f ~340 | dispatch W3 P2 |
+| t76 | 07/W3 | P2 | Opus | ab9e09ea36d646d61 | returned OK; fixed SA-key temp-file cleanup (if:always); 5 dims re-gated clean; actionlint clean | 677219a | 4f +78/-1 | minor → P3 confirm-quiet |
+| t77 | 07/W3 | P3 | Opus | a29b41dd44167988c | QUIET → **W3 CLOSED** (scheduled CD live 6h, actionlint clean, secret-safe) | (none) | 0 | begin W4 Cloud Run |
+| t78 | 07/W4 | P1 | Opus | aca26e3c11db24ba6 | returned OK; Cloud Run Job LIVE+PROVEN (exec r9vgn succeeded, real data landed); image→AR, least-priv SA+WIF Vertex, Secret Manager, deploy script+CD workflow; FIXED critical secrets-in-logs (DSN/Upstash redaction across all runners) | fc3785b | 14f +827/-20 | gate P2: SA/secrets/redaction/job config |
+| t79 | 07/W4 | P2 | Opus | a9e2b7d97ed63bed0 | returned OK; CRITICAL: pass1 proof ran pre-redaction image → leaked Neon DSN to Cloud Logging (shared neondb_owner pw). PURGED logs, re-verified clean, re-ran fixed image hnwdm (redacted). All else clean. Recommends pw rotation | ae56e37 | 2 docs +105/-7 | ROTATE creds → then W4 P3 |
+| t80 | SEC/rotate | P1 | Opus | ae087e378a6c3263f | DONE; Neon pw rotated in place, re-fanned all targets (Vercel/Actions/SecretMgr v2), OLD CRED DEAD, LIVE REST/MCP/pipeline green on new creds; runbook doc | 1ea3120 | 1 doc | exposure CLOSED → W4 P3 |
+| t81 | 07/W4 | P3 | Opus | aae4b1a34c327ff27 | QUIET → **W4 CLOSED** (Cloud Run Jobs CD secret-safe, redaction complete, SA least-priv, no double-schedule; live redacted+green) | (none) | 0 | **WORKER CD DONE** → Plan04 W2 |
+| t82 | 04/W2 | P1 | Opus | — | dispatched (source policy + SSRF) | — | — | gate → P2 |
+
+**Phase D progress:** Plan07 W1✅ secrets · REST-auth✅ · W6✅ MCP OAuth · W3✅ Actions CD · W4✅ Cloud Run | remaining: Plan07 W7 backups, W8 budget; Plan04 W2 source-policy/SSRF, W3 audit, W4 feedback, W5 subs, W6 observability, W7 deploy-paths/backups, W8 runbook.
+
+**Carry-forward (cross-platform):** scripts/ops fan-out/deploy use `execFile('gcloud',…)` → ENOENT on Windows (.cmd shim) for `--target cloudrun`; fix before a Windows operator uses it (Cloud Run secrets currently via Secret Manager direct).
 
 **Phase D progress:** Plan07 W1✅ secrets · REST-auth✅(W5+Plan04W1-REST) · W6✅ MCP OAuth | remaining: Plan07 W3 (Actions CD), W4 (Cloud Run Jobs), W7 (backups), W8 (budget); Plan04 W2 source-policy/SSRF, W3 audit, W4 feedback, W5 subs, W6 observability, W7 deploy-paths, W8 runbook.
 

@@ -14,7 +14,7 @@
 // Usage: DATABASE_URL=<neon-branch-url> node scripts/dev/verify-audit.mjs
 // (Run against a disposable branch; it issues + revokes test keys and writes audit_events rows.)
 
-import { createDb, issueApiKey, queryAuditEvents, revokeApiKey } from '@intercal/core';
+import { createDb, issueApiKey, queryAuditEvents, revokeApiKey, sql } from '@intercal/core';
 
 const databaseUrl = process.env.DATABASE_URL;
 if (!databaseUrl) {
@@ -121,6 +121,15 @@ async function main() {
     deleteBlocked = /append-only/i.test(err.message);
   }
   check('DELETE on audit_events is rejected (append-only)', deleteBlocked);
+
+  // TRUNCATE bypasses row triggers; the statement-level guard (migration 0027) must still RAISE.
+  let truncateBlocked = false;
+  try {
+    await sql`TRUNCATE TABLE audit_events`.execute(db);
+  } catch (err) {
+    truncateBlocked = /append-only/i.test(err.message);
+  }
+  check('TRUNCATE on audit_events is rejected (append-only)', truncateBlocked);
 
   // Confirm the row survived the rejected mutation attempts.
   const survived = await queryAuditEvents(db, { targetType: 'api_key', targetId: issued.id });

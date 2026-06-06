@@ -13,7 +13,8 @@ record of *who did what to trust-sensitive state*. It answers "who issued/revoke
 ## Model
 
 Schema: `db/migrations/0022_audit_events.sql` (table) + `db/migrations/0026_audit_events_append_only.sql`
-(append-only enforcement). Columns:
+(UPDATE/DELETE enforcement) + `db/migrations/0027_audit_events_forbid_truncate.sql` (TRUNCATE
+enforcement). Columns:
 
 | Column | Meaning |
 |---|---|
@@ -35,12 +36,14 @@ index on `high`/`critical` severity.
 
 ## Append-only posture
 
-Audit rows are **never updated or deleted**. Migration 0026 enforces this in the database: a
-`BEFORE UPDATE` and a `BEFORE DELETE` trigger on `audit_events` raise
-`audit_events is append-only: <OP> is not permitted` for every row, regardless of caller. History
-cannot be silently rewritten or erased through the normal data path. (Table-level DDL such as
-`TRUNCATE`/`DROP` is a privileged operator action and is out of scope for row-level enforcement —
-the guarantee is "no silent row mutation", which is the property an audit trail needs.)
+Audit rows are **never updated, deleted, or truncated**. The database enforces this: migration 0026
+adds `BEFORE UPDATE` and `BEFORE DELETE` row triggers, and migration 0027 adds a `BEFORE TRUNCATE`
+statement trigger; all three raise `audit_events is append-only: <OP> is not permitted`, regardless
+of caller. TRUNCATE is gated explicitly because it bypasses row-level triggers and, on a managed
+Postgres where the app role owns its tables (e.g. Neon `neondb_owner`), is reachable through the
+normal data path. History cannot be silently rewritten or erased. (Dropping the table/trigger via
+DDL remains a privileged, visible operator action and is intentionally not gated here — that is a
+deliberate operator decision, not a silent data-path erasure.)
 
 ## Emitting audit events
 
@@ -60,10 +63,15 @@ actor/action/target/severity; capped page size). Action strings live in `AUDIT_A
 ### Secrets posture
 
 The contract is **identity ids and safe metadata only** — never a raw key, hash, token, password,
-cookie, or `Authorization` value in `beforeState`/`afterState`/`metadata`/`rationale`. As a
-guardrail (not a license to pass secrets), the emit helper recursively redacts values under
-secret-bearing keys (`secret`, `token`, `password`, `api_key`/`apiKey`, `key_hash`, `raw`,
-`authorization`, `cookie`) to the literal `[redacted]`.
+cookie, DSN/connection string, or `Authorization` value in
+`beforeState`/`afterState`/`metadata`/`rationale`. As a guardrail (not a license to pass secrets),
+the emit helper recursively redacts values under secret-bearing keys to the literal `[redacted]` at
+any nesting depth (objects and arrays). The matcher is a case-insensitive substring test, so renamed
+and re-cased variants are still caught — covered families: `secret`, `token`, `password`/`passwd`/
+`pwd`, `api_key`/`apiKey`/`xApiKey`, `access_key`, `private_key`, `hash`/`key_hash`, `raw`,
+`authorization`/`bearer`, `credential(s)`, `cookie`, `session`, `dsn`,
+`connection_string`/`connectionString`/`conn_str`/`conn_uri`, `salt`, `signature`. Benign fields
+(`ownerId`, counts, names) pass through unchanged.
 
 ## Wired now
 
@@ -92,6 +100,7 @@ their owning workstream will call. They are **not** emitted yet because their su
   best-effort vs strict).
 - Live (throwaway Neon branch): `DATABASE_URL=<branch> node scripts/dev/verify-audit.mjs` — real
   issue/revoke write the expected append-only rows with correct actor/action/target/severity and
-  before/after snapshots, **no secret material** appears in any row, and direct `UPDATE`/`DELETE`
-  are both rejected. Last run: **14/14**. CLI path (`keys.mjs issue|revoke`) confirmed to write both
-  rows with the operator actor. Run against a disposable branch and delete it after.
+  before/after snapshots, **no secret material** appears in any row, and direct `UPDATE`/`DELETE`/
+  `TRUNCATE` are all rejected. Last run: **15/15** (2026-06-06, branch deleted after). CLI path
+  (`keys.mjs issue|revoke`) confirmed to write both rows with the operator actor. Run against a
+  disposable branch and delete it after.

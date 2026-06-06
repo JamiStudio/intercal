@@ -40,7 +40,7 @@ export {
 export type { CoreConfig } from './config.js';
 export { loadConfig } from './config.js';
 export type { Db } from './db/client.js';
-export { createDb } from './db/client.js';
+export { createDb, sql } from './db/client.js';
 export type { Database } from './db/types.js';
 export {
   ForbiddenError,

@@ -238,9 +238,20 @@ audit row in the **same transaction** as the key mutation, recording only safe i
 (id/name/keyPrefix/scopes/owner/expiry; before/after active→revoked + reason). The ops CLI
 (`scripts/ops/keys.mjs`) threads the operator identity (`--by`) as the actor. Durable doc:
 `docs/security/audit-events.md`. **Live-verified** on a throwaway Neon branch (deleted after):
-`scripts/dev/verify-audit.mjs` 14/14 — correct actor/action/target/severity + before/after, NO secret
-material in any row, UPDATE and DELETE both rejected; the CLI path writes both rows with the operator
+`scripts/dev/verify-audit.mjs` — correct actor/action/target/severity + before/after, NO secret
+material in any row, mutation attempts rejected; the CLI path writes both rows with the operator
 actor.
+
+**Audit-2 (2026-06-06, second fresh-context pass):** correctness/security re-audit + fixes. Atomicity
+(audit row in the same tx as the key mutation), attribution (server-set actor, not spoofable), and the
+emit seams all held. Two genuine gaps closed: (1) **TRUNCATE** bypasses row-level triggers and, on a
+managed Postgres where the app role owns its tables (Neon `neondb_owner`), is reachable through the
+normal data path — `0027_audit_events_forbid_truncate.sql` adds a `BEFORE TRUNCATE` statement trigger
+(reusing the 0026 raise function) so the ledger cannot be silently emptied; (2) **redaction breadth** —
+the secret-key matcher now also covers `dsn`/connection-string, `credential(s)`, `private_key`,
+`access_key`, `bearer`, `hash` (any cased/renamed variant), `session`, `salt`, `signature`, with an
+adversarial nested/renamed-field unit test. Live re-verify **15/15** (UPDATE/DELETE/**TRUNCATE** all
+rejected, no secrets in any row, branch deleted after).
 
 Deferred (explicit, emit seam ready — NOT faked): feedback/review (W4), subscriptions (W5),
 source-policy changes (W2/Plan 06), entity merge / claim retraction / entity-resolution decisions
@@ -249,7 +260,8 @@ strings rather than inventing their own.
 
 Depends on:
 
-- [x] Plan 01 `audit_events` schema (migration 0022; append-only enforced by 0026).
+- [x] Plan 01 `audit_events` schema (migration 0022; append-only enforced by 0026 UPDATE/DELETE +
+      0027 TRUNCATE).
 - [x] Workstream 1 auth identities.
 
 Enables:

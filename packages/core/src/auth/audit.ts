@@ -70,9 +70,14 @@ export interface AuditEventInput {
   metadata?: Record<string, unknown>;
 }
 
-/** Keys that must never carry a value into the audit ledger; their values are dropped. */
+/**
+ * Keys that must never carry a value into the audit ledger; their values are dropped. Matches as a
+ * substring, case-insensitive, so renamed variants (`refreshToken`, `db_password`, `xApiKey`,
+ * `connectionString`) are still caught. The ledger should only ever carry identity ids and safe
+ * metadata, so this errs toward redaction.
+ */
 const SECRET_KEY_RE =
-  /(secret|token|password|passwd|api[_-]?key|key_hash|raw|authorization|cookie)/i;
+  /(secret|token|password|passwd|pwd|api[_-]?key|access[_-]?key|private[_-]?key|hash|raw|authorization|bearer|credential|cookie|session|dsn|conn(?:ection)?[_-]?(?:string|str|uri|url)|salt|signature)/i;
 
 /**
  * Defensively strip secret-bearing keys from a state/metadata object before it is persisted. This

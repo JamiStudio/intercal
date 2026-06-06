@@ -137,6 +137,52 @@ describe('recordAuditEvent secret redaction', () => {
     // The raw secret value never appears anywhere in the serialized row.
     expect(JSON.stringify(row)).not.toContain('ical_sk_should_never_persist');
   });
+
+  it('catches renamed/nested secret carriers (dsn, connection string, bearer, credentials)', async () => {
+    const { db, rows } = makeCapturingDb();
+    const POISON = 'POISON_SECRET_VALUE';
+    await recordAuditEvent(db, {
+      ...baseEvent,
+      beforeState: {
+        // Renamed / cased variants that must still be redacted.
+        DATABASE_DSN: `postgres://u:${POISON}@h/db`,
+        connectionString: `postgres://u:${POISON}@h/db`,
+        conn_str: POISON,
+        refreshToken: POISON,
+        db_password: POISON,
+        xApiKey: POISON,
+        accessKey: POISON,
+        privateKey: POISON,
+        sessionId: POISON,
+        credentials: { bearer: POISON },
+        deep: [{ secretSauce: POISON }, { keyHash: POISON }],
+        // Benign fields must survive untouched.
+        ownerId: 'user-1',
+        count: 3,
+      },
+      metadata: { CredentialSet: POISON, label: 'ok' },
+    });
+    const row = only(rows);
+    const before = JSON.parse(row.before_state as string);
+    expect(before.DATABASE_DSN).toBe('[redacted]');
+    expect(before.connectionString).toBe('[redacted]');
+    expect(before.conn_str).toBe('[redacted]');
+    expect(before.refreshToken).toBe('[redacted]');
+    expect(before.db_password).toBe('[redacted]');
+    expect(before.xApiKey).toBe('[redacted]');
+    expect(before.accessKey).toBe('[redacted]');
+    expect(before.privateKey).toBe('[redacted]');
+    expect(before.sessionId).toBe('[redacted]');
+    expect(before.credentials).toBe('[redacted]');
+    expect(before.deep).toEqual([{ secretSauce: '[redacted]' }, { keyHash: '[redacted]' }]);
+    // Benign fields preserved.
+    expect(before.ownerId).toBe('user-1');
+    expect(before.count).toBe(3);
+    const meta = JSON.parse(row.metadata as string);
+    expect(meta).toEqual({ CredentialSet: '[redacted]', label: 'ok' });
+    // The poison value appears nowhere in the fully serialized row.
+    expect(JSON.stringify(row)).not.toContain(POISON);
+  });
 });
 
 describe('best-effort vs strict', () => {

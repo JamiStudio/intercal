@@ -1,6 +1,9 @@
-import { Kysely, PostgresDialect } from 'kysely';
+import { Kysely, PostgresDialect, sql } from 'kysely';
 import pg from 'pg';
 import type { Database } from './types.js';
+
+/** Re-export Kysely's `sql` tag so callers can run raw statements without depending on kysely directly. */
+export { sql };
 
 export type Db = Kysely<Database>;
 

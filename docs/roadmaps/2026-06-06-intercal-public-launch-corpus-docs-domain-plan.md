@@ -149,6 +149,11 @@ The first proof consumes the same adapters, provenance rules, and public query p
   timed polls and a queued status nudge returned no checkpoint. Previous status was `running`; no
   result or changes were accepted from that handle. Next coordinator action: dispatch a tighter
   Workstream 2 pass 1 adapter-foundation slice from current repo state.
+- 2026-06-06T12:04:21-04:00 — Dispatched bounded Workstream 2 pass 1 replacement to agent
+  `019e9dad-6cb8-7183-816a-f9161c3f449e` (`Erdos`). Ownership boundary: adapter foundation,
+  source registry, shared adapter tests, Workstream 2 roadmap status, and changelog. Scope is a
+  commit-sized adapter-foundation slice; remaining Workstream 2 adapters may be carried into pass 2
+  if the slice would otherwise become oversized. Next coordinator action: poll in short intervals.
 
 ## Workstream 1: Corpus Scope And Source Taxonomy
 

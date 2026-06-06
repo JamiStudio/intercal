@@ -83,6 +83,7 @@ function parseArgs(argv) {
   const opts = { buildOnly: false, deployOnly: false, tag: null, dryRun: false };
   for (let i = 0; i < argv.length; i++) {
     const a = argv[i];
+    if (a === '--') continue;
     if (a === '--build-only') opts.buildOnly = true;
     else if (a === '--deploy-only') opts.deployOnly = true;
     else if (a === '--dry-run') opts.dryRun = true;

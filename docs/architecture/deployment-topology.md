@@ -37,6 +37,10 @@ alternative for **other people** — it is not the maintainers' dev flow.
   standard Streamable HTTP). Going live = connect the GitHub repo to Vercel, set env vars
   (Neon `DATABASE_URL`, R2, Upstash, LLM keys), and attach a domain. Until a domain is
   attached we run on the `*.vercel.app` preview/prod URL.
+- The operator deployment runbook is [`../operations/deployment.md`](../operations/deployment.md).
+  It ties the Vercel app/MCP/REST path, GitHub Actions pipeline, Cloud Run Job, DNS/TLS,
+  migrations, health checks, rollback, self-host, VPS, backup, and restore instructions back to the
+  live code surfaces listed above.
 - **Monetization/donations are a feature flag**, surfaced only after the domain + posture are
   settled. This is a copy/link toggle, never a re-architecture, and never blocks development.
 

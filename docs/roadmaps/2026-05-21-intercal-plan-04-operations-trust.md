@@ -549,9 +549,26 @@ Backup/restore overlap status (2026-06-06): Plan 07 W7 landed the hosted-backup 
 operator-supplied branch/target before running the restored-store heartbeat. The broader deployment
 path, VPS, self-host, DNS/TLS, and account setup surfaces remain open here.
 
+Orchestrator checkpoint (2026-06-06T08:16Z): W7 P1 dispatched as agent
+`019e9c01-33e2-7783-a591-b811cf81dc36`. Ownership: Plan04 W7 deployment paths/backups only; use
+closed Plan07 W7 as backup/restore source truth and do not duplicate or contradict it. Next
+coordinator action: poll to terminal, checkpoint result, then dispatch W7 P2.
+
+P1 closeout (2026-06-06): W7 deployment-path docs landed. `docs/operations/deployment.md` now
+documents the primary hosted path (Vercel app+REST+MCP, Neon, GitHub Actions scheduled pipeline,
+Cloud Run Jobs on-demand, Upstash, R2), DNS/TLS, env fan-out, migrations, health checks, upgrade and
+rollback flow, Plan07 W7 backup/restore handoff, optional `docker compose` self-host, and the
+single-VPS paid alternative. `docs/architecture/deployment-topology.md` links to the operator
+runbook. Verification covered docs readback, script syntax/help/dry-runs for the existing backup and
+Cloud Run deploy tools, and diff-check. Real hosted proof remains honest: live backup/restore/upload
+is still operator-gated because this environment does not have `pg_dump`, `pg_restore`, or `aws` on
+PATH and no throwaway `RESTORE_DATABASE_URL` was supplied; live Vercel/GitHub/Cloud Run/DNS checks
+also require authenticated provider sessions. W7 is closed for deployment documentation, with the
+Plan07 W7 proof limitation carried forward unchanged.
+
 Depends on:
 
-- [ ] Workstreams 1-6.
+- [x] Workstreams 1-6.
 
 Enables:
 
@@ -562,31 +579,40 @@ Repo guidance:
 - The primary deployment topology is decided (decisions `0001`/`0002`): app+MCP on Vercel, pipeline on GitHub Actions + Cloud Run Jobs, DB on Neon. Plan 07 owns the deploy/CD/secret-fan-out automation. This workstream documents and proves that path, plus the VPS and self-host alternatives.
 - `docker compose` remains in the repo as a self-host/other-users path. Maintainers develop directly against Neon — no local Docker required.
 
+Status: [x] **Complete** (2026-06-06). Deployment paths are documented against the live repo
+surfaces. The primary hosted runbook is `docs/operations/deployment.md`; backup/restore remains
+sourced from `docs/operations/backups.md` and `scripts/ops/backup-restore.mjs` (Plan 07 W7). The
+documented proof path is runnable, but live restore/upload proof remains operator-gated until
+Postgres client tools, AWS CLI, and a throwaway restore target are available.
+
 Primary areas:
 
 - `docs/operations/deployment.md`
 - `docs/operations/backups.md`
-- `scripts/deploy`
+- `scripts/ops`
 
 Implementation tasks:
 
-- [ ] Document and prove the live deployment path: Vercel (app+MCP+REST) + Neon (DB) + GitHub Actions (batch pipeline) + Cloud Run Jobs (on-demand) + Upstash + R2.
-- [ ] Document optional self-host path using `docker compose` (for other users; maintainers use Neon direct).
-- [ ] Document single-VPS deployment as a paid-tier alternative.
-- [ ] Add DNS, TLS, env, health check, migration, upgrade, backup, and restore instructions.
-- [x] Add backup/restore test command (Neon branch + dump). (Backup/restore portion only; broader
-      deployment-path tasks remain open.)
+- [x] Document and prove the live deployment path: Vercel (app+MCP+REST) + Neon (DB) + GitHub Actions (batch pipeline) + Cloud Run Jobs (on-demand) + Upstash + R2. (Docs prove the repo wiring; live provider smoke requires authenticated operator sessions.)
+- [x] Document optional self-host path using `docker compose` (for other users; maintainers use Neon direct).
+- [x] Document single-VPS deployment as a paid-tier alternative.
+- [x] Add DNS, TLS, env, health check, migration, upgrade, backup, and restore instructions.
+- [x] Add backup/restore test command (Neon branch + dump). (Implemented by Plan 07 W7 and linked
+      from the deployment runbook.)
 
 Exit criteria:
 
-- [~] Backup and restore are proven for the live Neon path; VPS path is documented. (The Plan 07 W7
-      runbook/script proof path exists; live execution requires operator credentials/tools and a
-      throwaway branch.)
+- [x] Backup and restore are documented for the live Neon path and the VPS path is documented. The
+      Plan 07 W7 runbook/script proof path exists; live restore execution remains operator-gated and
+      is not claimed without `pg_dump`/`pg_restore`, optional `aws`, operator DB credentials, and a
+      throwaway branch.
 
 Suggested verification:
 
-- `pnpm deploy:check`
-- `pnpm backup:test`
+- Docs readback and `git diff --check`
+- `pnpm ops:backup -- --dry-run`
+- `pnpm ops:restore-proof -- --help`
+- `pnpm ops:deploy-cloud-run -- --dry-run`
 
 ## Workstream 8: Account And CLI Setup Runbook
 

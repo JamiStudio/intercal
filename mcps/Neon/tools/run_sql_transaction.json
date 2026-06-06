@@ -1,0 +1,34 @@
+{
+  "name": "run_sql_transaction",
+  "description": "\n    <use_case>\n      Use this tool to execute a SQL transaction against a Neon database, should be used for multiple SQL statements.\n    </use_case>\n\n    <important_notes>\n      If you have a temporary branch from a prior step, you MUST:\n      1. Pass the branch ID to this tool unless explicitly told otherwise\n      2. Tell the user that you are using the temporary branch with ID [branch_id]\n\n      NEVER run destructive SQL (DROP, DELETE, TRUNCATE, UPDATE without WHERE) autonomously; always ask the user first. Prefer testing on a temporary branch first.\n    </important_notes>\n\n<notice>\nNotice: Write mode active. Destructive tools are exposed. For tools with `destructiveHint: true`, NEVER invoke autonomously; always ask the user first.\n</notice>",
+  "inputSchema": {
+    "type": "object",
+    "properties": {
+      "sqlStatements": {
+        "type": "array",
+        "items": {
+          "type": "string"
+        },
+        "description": "The SQL statements to execute"
+      },
+      "projectId": {
+        "type": "string",
+        "description": "The ID of the project to execute the query against"
+      },
+      "branchId": {
+        "type": "string",
+        "description": "An optional ID of the branch to execute the query against. If not provided the default branch is used."
+      },
+      "databaseName": {
+        "type": "string",
+        "description": "The name of the database. If not provided, the default neondb or first available database is used."
+      }
+    },
+    "required": [
+      "sqlStatements",
+      "projectId"
+    ],
+    "additionalProperties": false,
+    "$schema": "http://json-schema.org/draft-07/schema#"
+  }
+}

@@ -1,0 +1,48 @@
+{
+  "name": "complete_database_migration",
+  "description": "Complete a database migration by applying changes to the main branch and cleaning up the temporary branch. NEVER run autonomously; always ask the user first and verify in the temporary branch.\n\n    <important_notes>\n      You MUST pass ALL values from the `prepare_database_migration` response:\n      - migrationId: The migration ID\n      - migrationSql: The exact SQL from prepare step\n      - databaseName: The database name\n      - projectId: The project ID\n      - temporaryBranchId: The temporary branch to delete\n      - parentBranchId: The branch to apply migration to\n      - applyChanges: Set to true to apply the migration, or false to just delete the temp branch without applying\n    </important_notes>\n\n    <workflow>\n      1. If applyChanges is true, applies the migration SQL to the parent branch\n      2. Deletes the temporary branch (cleanup)\n      3. Returns confirmation of the operation\n    </workflow>\n\n<notice>\nNotice: Write mode active. Destructive tools are exposed. For tools with `destructiveHint: true`, NEVER invoke autonomously; always ask the user first.\n</notice>",
+  "inputSchema": {
+    "type": "object",
+    "properties": {
+      "migrationId": {
+        "type": "string",
+        "description": "The migration ID from prepare_database_migration."
+      },
+      "migrationSql": {
+        "type": "string",
+        "description": "The SQL statements to apply. Pass the exact value from prepare_database_migration."
+      },
+      "databaseName": {
+        "type": "string",
+        "description": "The database name. Pass the exact value from prepare_database_migration."
+      },
+      "projectId": {
+        "type": "string",
+        "description": "The project ID. Pass the exact value from prepare_database_migration."
+      },
+      "temporaryBranchId": {
+        "type": "string",
+        "description": "The temporary branch ID to delete after migration."
+      },
+      "parentBranchId": {
+        "type": "string",
+        "description": "The parent branch ID where migration will be applied."
+      },
+      "applyChanges": {
+        "type": "boolean",
+        "default": true,
+        "description": "Whether to apply the migration. Set to false to just delete the temp branch without applying."
+      }
+    },
+    "required": [
+      "migrationId",
+      "migrationSql",
+      "databaseName",
+      "projectId",
+      "temporaryBranchId",
+      "parentBranchId"
+    ],
+    "additionalProperties": false,
+    "$schema": "http://json-schema.org/draft-07/schema#"
+  }
+}

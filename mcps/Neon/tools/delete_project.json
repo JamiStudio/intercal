@@ -1,0 +1,18 @@
+{
+  "name": "delete_project",
+  "description": "Delete a Neon project and all its data. NEVER run autonomously; always ask the user first. For removing single branches, use `delete_branch` instead.\n\n<notice>\nNotice: Write mode active. Destructive tools are exposed. For tools with `destructiveHint: true`, NEVER invoke autonomously; always ask the user first.\n</notice>",
+  "inputSchema": {
+    "type": "object",
+    "properties": {
+      "projectId": {
+        "type": "string",
+        "description": "The ID of the project to delete"
+      }
+    },
+    "required": [
+      "projectId"
+    ],
+    "additionalProperties": false,
+    "$schema": "http://json-schema.org/draft-07/schema#"
+  }
+}

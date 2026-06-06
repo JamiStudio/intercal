@@ -34,10 +34,11 @@ alternative for **other people** — it is not the maintainers' dev flow.
 ## Go-live
 
 - The app is deploy-target agnostic (Hono runs on Node/Vercel/Cloudflare/Bun; MCP uses
-  standard Streamable HTTP). Going live = connect the GitHub repo to Vercel, set env vars
-  (Neon `DATABASE_URL`, R2, Upstash, LLM keys), set the Vercel Root Directory to
-  `packages/dashboard`, and attach a domain. Until a domain is attached we run on the
-  `*.vercel.app` preview/prod URL.
+  standard Streamable HTTP). The official Intercal public domain is `intercal.jami.studio`,
+  attached to the Vercel project with legacy Vercel/domain redirects preserved for compatibility.
+  New hosted environments still follow the same path: connect the GitHub repo to Vercel, set env
+  vars (Neon `DATABASE_URL`, R2, Upstash, LLM keys), set the Vercel Root Directory to
+  `packages/dashboard`, and attach the target domain.
 - The operator deployment runbook is [`../operations/deployment.md`](../operations/deployment.md).
   It ties the Vercel app/MCP/REST path, GitHub Actions pipeline, Cloud Run Job, DNS/TLS,
   migrations, health checks, rollback, self-host, VPS, backup, and restore instructions back to the

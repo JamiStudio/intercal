@@ -12,8 +12,10 @@ direct, Vercel app, GCloud workers) as each phase begins.
 
 ## Current live state (the ground we build on)
 
-- **Live:** `lntercal.vercel.app` — Next.js dashboard + Hono REST API on one Vercel domain,
-  reading from **Neon** (Postgres 18 + pgvector 0.8.1, full schema + seed vocabularies).
+- **Live:** `intercal.jami.studio` — the official Intercal public domain, serving the Next.js
+  dashboard + Hono REST API on one Vercel project, reading from **Neon** (Postgres 18 + pgvector
+  0.8.1, full schema + seed vocabularies). Existing Vercel/legacy domain redirects remain in place
+  for compatibility.
 - **Wired:** GitHub (`JamiStudio/intercal`, CI + Actions secrets), Vercel (jami.studio),
   Neon, Upstash (jami.studio), Gemini (postpay), GCloud `rich-wavelet-496206-h7` (yrka.io
   trial credits; SA `owner`, Cloud Run/Vertex/Build/Scheduler/Secret-Manager enabled).

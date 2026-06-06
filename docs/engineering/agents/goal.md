@@ -2,10 +2,9 @@
 
 Working from:
 
-`docs/roadmaps/2026-06-04-intercal-program.md` — the master program (phases A–F), which sequences
-the active dated plans under `docs/roadmaps/` (00 reset, 01 foundation, 02–06 feature streams, 07
-deploy/CD/auth/secrets). The relevant dated plan is the active implementation plan; the program is
-the index. The live repository is the source of truth, not stale plan claims.
+`docs/roadmaps/2026-06-06-intercal-public-launch-corpus-docs-domain-plan.md` — the active roadmap
+for public launch, broad AI-history corpus backfill, docs/Mintlify readiness, Jami Studio marketing,
+and domain routing.
 
 ## Your Role: The Orchestrator
 
@@ -42,7 +41,8 @@ what parallelizes.
 ## End Product Shape
 
 The target is an open, provenance-backed **temporal knowledge substrate** for agents and LLM apps,
-live on a domain (currently `lntercal.vercel.app`):
+live on the official Intercal domain (`https://intercal.jami.studio/`; legacy Vercel/domain
+redirects remain in place for compatibility):
 
 - Source documents → extracted claims → resolved entities → typed temporal relationships →
   append-only **bitemporal fact versions** → embeddings, built idempotently by the Python pipeline.
@@ -160,8 +160,9 @@ Before final response:
 
 ```text
 
-Working from: `docs/roadmaps/2026-06-04-intercal-program.md` (master program) and the active dated
-plan under `docs/roadmaps/`. The live repository is the source of truth, not roadmap claims.
+Working from: `docs/roadmaps/2026-06-06-intercal-public-launch-corpus-docs-domain-plan.md` (active
+roadmap) and `docs/roadmaps/2026-06-04-intercal-program.md` (master program index). The live
+repository is the source of truth, not roadmap claims.
 
 <APPEND YOUR WORKSTREAM STEERING HERE>
 

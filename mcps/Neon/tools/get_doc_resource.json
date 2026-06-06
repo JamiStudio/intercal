@@ -1,0 +1,18 @@
+{
+  "name": "get_doc_resource",
+  "description": "\n  <use_case>\n    Fetches a specific Neon documentation page as markdown content.\n    Use the list_docs_resources tool first to discover available page slugs, then pass the slug to this tool.\n\n    Use this tool when:\n    - You have identified a specific docs page to fetch (from list_docs_resources results)\n    - You need detailed guidance on a Neon feature, workflow, or configuration\n    - The user needs step-by-step instructions for a Neon-related task\n  </use_case>\n\n  <workflow>\n    1. First call list_docs_resources to get the index of available pages\n    2. Pick the relevant page slug from the list (e.g. \"docs/guides/prisma.md\")\n    3. Call this tool with that slug to get the full page content as markdown\n  </workflow>\n\n  <important_notes>\n    - The slug parameter is the path portion of the docs .md URL (e.g. \"docs/connect/connection-pooling.md\")\n    - Slugs use .md file endings matching the URLs in the documentation index\n    - Always use list_docs_resources first to discover the correct slug — do not guess slugs\n    - This tool fetches the page directly from https://neon.com/{slug} as markdown\n    - Returns the full documentation page content as markdown text\n  </important_notes>\n\n<notice>\nNotice: Write mode active. Destructive tools are exposed. For tools with `destructiveHint: true`, NEVER invoke autonomously; always ask the user first.\n</notice>",
+  "inputSchema": {
+    "type": "object",
+    "properties": {
+      "slug": {
+        "type": "string",
+        "description": "The docs page slug (path) to fetch, e.g. 'docs/guides/prisma.md'. Slugs use .md file endings matching the URLs in the documentation index. Use the list_docs_resources tool first to discover available slugs."
+      }
+    },
+    "required": [
+      "slug"
+    ],
+    "additionalProperties": false,
+    "$schema": "http://json-schema.org/draft-07/schema#"
+  }
+}

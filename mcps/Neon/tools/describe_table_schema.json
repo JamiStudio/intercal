@@ -1,0 +1,31 @@
+{
+  "name": "describe_table_schema",
+  "description": "Get column definitions, data types, and constraints for a specific table. Do not use when you need all tables in a database (use `get_database_tables` instead).\n\n<notice>\nNotice: Write mode active. Destructive tools are exposed. For tools with `destructiveHint: true`, NEVER invoke autonomously; always ask the user first.\n</notice>",
+  "inputSchema": {
+    "type": "object",
+    "properties": {
+      "tableName": {
+        "type": "string",
+        "description": "The name of the table"
+      },
+      "projectId": {
+        "type": "string",
+        "description": "The ID of the project to execute the query against"
+      },
+      "branchId": {
+        "type": "string",
+        "description": "An optional ID of the branch to execute the query against. If not provided the default branch is used."
+      },
+      "databaseName": {
+        "type": "string",
+        "description": "The name of the database. If not provided, the default neondb or first available database is used."
+      }
+    },
+    "required": [
+      "tableName",
+      "projectId"
+    ],
+    "additionalProperties": false,
+    "$schema": "http://json-schema.org/draft-07/schema#"
+  }
+}

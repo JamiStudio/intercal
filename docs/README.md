@@ -38,12 +38,14 @@ flow, decisions, and how to operate Intercal safely.
 ## Roadmaps (active, dated)
 
 - [`roadmaps/2026-06-04-intercal-program.md`](roadmaps/2026-06-04-intercal-program.md) — **master program** (phases A–F); start here.
+- [`roadmaps/2026-06-06-intercal-public-launch-corpus-docs-domain-plan.md`](roadmaps/2026-06-06-intercal-public-launch-corpus-docs-domain-plan.md) — public launch, broad AI-history corpus, docs/Mintlify readiness, Jami Studio marketing, and domain routing.
 - [`roadmaps/`](roadmaps/) — the dated implementation plans (00 reset, 01 foundation, 02–06 feature streams, 07 deploy/CD/auth/secrets). Completed plans retire to `_legacy/roadmaps/`.
 
 ## Research / reports (dated source material)
 
 - [`research/2026-05-21-intercal-foundation-report.md`](research/2026-05-21-intercal-foundation-report.md) — canonical product thesis + domain model.
 - [`research/2026-06-04-intercal-revisit-audit-and-dev-environment.md`](research/2026-06-04-intercal-revisit-audit-and-dev-environment.md) — June-2026 audit, resolved decisions, dev-environment plan.
+- [`research/2026-06-06-baseline-knowledge-seeding.md`](research/2026-06-06-baseline-knowledge-seeding.md) — baseline and historical corpus seeding report for GPT-era knowledge.
 - [`research/hosting-costs.md`](research/hosting-costs.md) — hosting/service cost matrix (planning reference).
 
 ## Conventions

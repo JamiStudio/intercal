@@ -96,7 +96,9 @@ Implementation tasks:
       credentials that authenticate the push; `targets: []`, never fanned) — in
       `docs/operations/secrets.md`, and clarified the operator lane (names only) in `.env.example`.
 - [x] Verified each target reflects the source after a run: Vercel 4 names (prod/preview/dev);
-      GitHub 24 app-runtime names (26 present incl. 2 operator-lane set earlier); Cloud Run deferred.
+      GitHub 23 app-runtime names (25 present incl. 2 operator-lane set earlier); Cloud Run deferred.
+      Audit-2: re-laned `GCLOUD_REGION` app-runtime→operator (orphan; only the gcloud-CLI deploy uses
+      it) + schema now enforces operator⇒`targets:[]`.
 
 Exit criteria:
 

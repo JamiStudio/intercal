@@ -42,11 +42,24 @@ command output.
   - **Vercel** (`intercal` project): set 4 names (`DATABASE_URL`, `DATABASE_URL_UNPOOLED`,
     `PUBLIC_API_BASE_URL`, `LOG_LEVEL`) across production/preview/development; verified by listing.
     Re-run confirmed idempotent (PATCH in place, no duplicate rows).
-  - **GitHub Actions** (`JamiStudio/intercal`): set 24 app-runtime names; verified 26 present
+  - **GitHub Actions** (`JamiStudio/intercal`): set 23 app-runtime names; verified 25 present
     (the 2 extra — `GCP_SA_KEY`, `NEON_API_KEY` — are operator-lane, set manually earlier; the
     script does not re-fan them by design).
   - **Cloud Run**: deferred — no service exists yet (Plan 07 W4). Script reports a precise
-    deferral; 25 names are mapped and ready once `CLOUD_RUN_SERVICE` is set.
+    deferral; 24 names are mapped and ready once `CLOUD_RUN_SERVICE` is set.
+
+## Audit follow-up (2026-06-05, second pass)
+
+- **Re-laned `GCLOUD_REGION` from app-runtime → operator (`targets: []`).** No app-runtime code
+  reads it (the Vertex runtime region is `VERTEX_LOCATION` in `config.py`); its only consumer is the
+  fan-out's `gcloud run services update --region`, which is an operator concern read straight from
+  `.env`. It was therefore an orphan app-runtime entry being fanned to GitHub/Cloud Run for nothing.
+  Removed the now-orphaned `GCLOUD_REGION` GitHub secret to keep manifest ↔ reality aligned.
+- **Hardened `secrets.manifest.schema.json`:** added an `if/then` so `lane: operator` requires
+  `targets` to be empty — the data can no longer contradict the code's lane guard (defense in depth).
+- Re-verified: leakage scan across script/manifest/schema/runbook/`.env.example`/changelog clean
+  (only placeholder/test/lockfile-hash matches); Vercel 4 names unified across prod/preview/dev;
+  GitHub 25 names; idempotent re-run is a structural no-op.
 
 ## Notes
 

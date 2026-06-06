@@ -70,6 +70,36 @@ no service, the script reports a precise deferral and lists how many app-runtime
 `cloudrun` and ready. Once a service is deployed, set `CLOUD_RUN_SERVICE` in `.env` and re-run
 `--target cloudrun`.
 
+## Rotation runbook (credential leak / periodic)
+
+If a credential leaks (e.g. a DSN reaches a log) or is rotated periodically, rotate at the
+**source** and re-fan — never patch one target by hand. For the Neon `DATABASE_URL` /
+`DATABASE_URL_UNPOOLED` pair (role `neondb_owner` on the production branch):
+
+1. **Rotate the role password** on the production branch (Neon console *Reset password*, the
+   Neon API `…/roles/{role}/reset_password`, or `ALTER ROLE neondb_owner WITH PASSWORD …` over
+   the **direct/unpooled** endpoint). The old password dies immediately. Validate the **new**
+   password on **both** the pooled and unpooled endpoints before proceeding.
+2. **Update `.env`** in place — `DATABASE_URL` (pooled, `-pooler` host) and
+   `DATABASE_URL_UNPOOLED` (direct host). Normalized `KEY=value`; never printed, never tracked.
+3. **Re-fan:** `node scripts/ops/secrets-fanout.mjs --target all` → Vercel + GitHub Actions.
+   Cloud Run reports DEFERRED (the pipeline is a **Job**, not a service — see below).
+4. **Cloud Run Job:** the Job binds `intercal-DATABASE_URL:latest` from Secret Manager, so add a
+   **new secret version** (pipe the value via stdin — `gcloud secrets versions add
+   intercal-DATABASE_URL --data-file=-`; never on the command line). `…:latest` makes the next
+   execution pick it up; a full re-deploy is only needed when the image/config changes. The full
+   `scripts/ops/deploy-cloud-run.mjs` does this same `syncSecrets` step for all `intercal-*`.
+5. **Vercel redeploy:** `DATABASE_URL` is a *runtime* env change, so a code push won't refresh a
+   live deployment — trigger a redeploy/promote so the production alias serves the new DSN.
+6. **Verify on the new credential:** live REST `GET /api/v1/freshness?topic_or_entity=rust` → 200
+   with data; live MCP `POST /api/mcp` initialize → 200; one capped `gcloud run jobs execute
+   intercal-pipeline` → success with **redacted** DSN logs (`neondb_owner:***`). Confirm the old
+   password no longer authenticates.
+
+The leaked secret value is dead the moment step 1 lands; steps 2–5 just stop every target failing
+on the now-invalid credential. The old Secret Manager version can be left disabled/inert (it can no
+longer authenticate) or destroyed.
+
 ## Rules
 
 - Never write a secret value into the manifest, code, docs, fixtures, or any output.

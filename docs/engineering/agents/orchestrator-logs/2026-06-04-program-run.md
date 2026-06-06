@@ -112,7 +112,14 @@ Plan 04 WS: W1 auth+rate-limits · W2 source policy/SSRF · W3 audit events · W
 Plan 07 remaining: W1 secret fan-out (prereq for W3/W4/W5/W6/W7/W8; scripts/ops/ absent) · W3 Actions scheduled CD · W4 Cloud Run Jobs · W5 REST API keys · W6 MCP OAuth 2.1 · W7 backups/restore · W8 budget enforcement.
 Sequence: Plan 07 W1 (secrets) first → then auth cluster (Plan04 W1 + Plan07 W5/W6) ∥ worker CD (Plan07 W3/W4) → Plan04 W2–W8 → Plan07 W7/W8.
 
-| t65 | 07/W1 | P1 | Opus | — | dispatched (secret management & fan-out; scripts/ops/) | — | — | gate → P2 |
+| t65 | 07/W1 | P1 | Opus | a33c69cfcfe1744b7 | returned OK; scripts/ops/secrets-fanout.mjs + manifest; LIVE Vercel(4)+GitHub Actions(24) confirmed; Cloud Run deferred(W4); no value leak; lane-separated | 8d94d9e | ~6f +873/-6 | dispatch W1 P2 |
+| t66 | 07/W1 | P2 | Opus | ad824984942d9c766 | returned OK; leakage scan CLEAN; lane-sep hardened in schema; fixed GCLOUD_REGION mis-lane; idempotency live-verified | 121405b | 4f +30/-9 | minor fix → P3 confirm-quiet |
+| t67 | 07/W1 | P3 | Opus | a8f148f4fadf8234b | QUIET → **W1 CLOSED** (zero leakage, lane-sep double-enforced, idempotent, live-verified Vercel 4 + GitHub 25) | (none) | 0 | begin REST auth stream |
+| t68 | 07W5+04W1(REST) | P1 | Opus | a7d06e3b22fdc2d73 | returned OK; hashed scoped API keys + RateLimitStorePort(Upstash+fallback) + usage_events + anon policy + ops:keys CLI; LIVE 17/17 throwaway branch; 24 tests | a8916b1 | 29f +1951/-23 | gate P2: timing-safe, RL races/headers, XFF trust, anon+MCP unbroken |
+| t69 | 07W5+04W1(REST) | P2 | Opus | a6ff4ffed7e3901f2 | INTERRUPTED (session limit 10:10pm, now reset); no change committed | (none) | 0 | re-dispatch P2 |
+| t70 | 07W5+04W1(REST) | P2 | Opus | — | re-dispatched | — | — | gate |
+
+**Phase D consolidation note:** REST auth (Plan07 W5 hashed scoped API keys) + rate limits (Plan04 W1 REST portion) done as ONE coherent middleware stack. MCP OAuth = Plan07 W6 (separate). Plan04 W1 MCP-rate-limit folded into W6.
 
 **Carry-forward (later seam, Plan 05/enhancement):** verifyClaim role-swap calibration limit — a token-identical role-swap with a near-identical 2nd candidate can grade `supported`; closing needs semantic parsing behind `LlmPort`. Documented, not a blocker.
 

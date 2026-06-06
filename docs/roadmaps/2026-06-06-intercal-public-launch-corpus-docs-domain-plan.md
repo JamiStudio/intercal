@@ -144,6 +144,11 @@ The first proof consumes the same adapters, provenance rules, and public query p
   Workstream 2 pass 1 adapter/source-registry/shared-test boundary. Next coordinator action: poll
   in short intervals, record result in `docs/engineering/agents/orchestrator-logs/`, then dispatch
   mandatory Workstream 2 pass 2 after pass 1 lands.
+- 2026-06-06T12:03:00-04:00 — Replacement Workstream 2 pass 1 agent
+  `019e9da5-e21a-7082-8766-e449c1c7549e` was closed as a stale tool-session handle after repeated
+  timed polls and a queued status nudge returned no checkpoint. Previous status was `running`; no
+  result or changes were accepted from that handle. Next coordinator action: dispatch a tighter
+  Workstream 2 pass 1 adapter-foundation slice from current repo state.
 
 ## Workstream 1: Corpus Scope And Source Taxonomy
 

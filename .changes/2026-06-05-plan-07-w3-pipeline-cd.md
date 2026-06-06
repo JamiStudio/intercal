@@ -18,7 +18,10 @@ Plan 02 pipeline runs end-to-end.
   - **Schedule enabled:** `cron: "17 */6 * * *"` — 6-hourly per `docs/operations/resource-budget.md`
     (`INGEST_CRON=0 */6 * * *`), minute offset off `:00` to avoid GitHub's top-of-hour schedule drops.
   - **Real CLI:** `setup-uv@v8.2.0` (was v5; v8+ no longer ships a moving major tag, so the exact
-    version is pinned) + `uv sync --all-packages --frozen` + `uv run intercal-pipeline`.
+    version is pinned) + `uv sync --all-packages --all-extras --frozen` (the `--all-extras` is required
+    so `intercal-shared`'s runtime adapter extras — storage-s3/aioboto3, source-http, embeddings-local,
+    llm-gemini, queue-redis — are installed; without them the run fails at adapter construction) +
+    `uv run intercal-pipeline`.
   - **`workflow_dispatch` inputs:** `mode` (run-all|run), `source_id`, `max_documents`, `no_embeddings`,
     and `database_url_override` (safe-test seam → throwaway Neon branch).
   - **Safety:** `concurrency {group: intercal-pipeline, cancel-in-progress: false}` (no overlap; finish

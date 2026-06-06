@@ -109,7 +109,10 @@ jobs:
           enable-cache: true
 
       - name: Install pipeline + worker packages
-        run: uv sync --all-packages --frozen
+        # --all-extras pulls intercal-shared's runtime adapter extras (storage-s3 /
+        # aioboto3, source-http, embeddings-local/fastembed, llm-gemini, queue-redis).
+        # Without them the real pipeline run fails at adapter construction (ImportError).
+        run: uv sync --all-packages --all-extras --frozen
 
       # Vertex ADC: the fanned GOOGLE_SERVICE_ACCOUNT_KEY secret holds the SA JSON.
       # Write it to a file and point the standard SDK env var at it. Only runs when the

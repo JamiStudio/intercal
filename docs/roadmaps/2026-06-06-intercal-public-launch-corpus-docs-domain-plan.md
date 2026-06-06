@@ -243,6 +243,13 @@ The first proof consumes the same adapters, provenance rules, and public query p
   `019e9dd1-ef93-7ad0-983d-096858428e5e` (`Locke`). Ownership boundary: Workstream 2 adapters,
   source registry, related adapter tests, Workstream 2 roadmap status, and changelog. Next
   coordinator action: poll in short intervals, record result, then gate the pass 6 commit.
+- 2026-06-06T13:21:00-04:00 — Workstream 2 pass 6 strict quiet audit found and closed one
+  remaining RSS URL-validation gap. RSS/Atom entries from an otherwise valid public feed now skip
+  item links blocked by the SSRF/public-URL guard before persisting the link as source-document
+  citation metadata. No source catalog rows, backfill execution, query gates, dashboard, docs,
+  marketing, domain, or direct fact-write work was added. Because pass 6 made meaningful adapter
+  hardening changes, another fresh-context quiet pass may still be needed before Workstream 2 is
+  closed.
 
 ## Workstream 1: Corpus Scope And Source Taxonomy
 
@@ -354,6 +361,14 @@ scope. RSS/Atom feeds now track seen IDs and latest timestamps per feed URL inst
 all configured feeds, so a GUID collision or newer item in one feed cannot suppress a valid item from
 another feed. RSS entries without a stable feed ID or link are skipped rather than persisted with a
 title-derived identifier. No source catalog rows, backfill execution, query gates, dashboard, docs,
+marketing, domain, or direct fact-write work was added. Because this pass made meaningful adapter
+hardening changes, another fresh-context quiet pass may still be needed before Workstream 2 is closed.
+
+Pass 6 closeout note: the strict quiet audit found one remaining RSS emitted-link validation gap and
+fixed it in scope. RSS/Atom entries from a valid public feed now skip item links blocked by the
+SSRF/public-URL guard before persisting the link as source-document citation metadata, so a feed item
+cannot surface loopback, metadata-service, private-network, or otherwise non-public URLs through
+public evidence citations. No source catalog rows, backfill execution, query gates, dashboard, docs,
 marketing, domain, or direct fact-write work was added. Because this pass made meaningful adapter
 hardening changes, another fresh-context quiet pass may still be needed before Workstream 2 is closed.
 

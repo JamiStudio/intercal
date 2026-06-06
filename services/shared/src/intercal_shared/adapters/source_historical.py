@@ -400,8 +400,11 @@ class RssFeedAdapter:
                 )
                 for item in _feed_items(response_text):
                     item_id = item.get("id") or item.get("link")
+                    item_link = item.get("link") or ""
                     published_at = _parse_dt(item.get("published_at", ""))
                     if not item_id or item_id in seen_ids:
+                        continue
+                    if item_link and not _is_safe_public_url(item_link):
                         continue
                     if latest_seen_dt and published_at and published_at <= latest_seen_dt:
                         continue
@@ -418,7 +421,7 @@ class RssFeedAdapter:
                     yield RawDocument(
                         content=json.dumps(item, ensure_ascii=False, sort_keys=True).encode(),
                         external_id=item_id,
-                        url=item.get("link") or feed_url,
+                        url=item_link or feed_url,
                         title=item.get("title"),
                         published_at=_format_dt(published_at),
                         language=str(adapter_config.get("language", "en")),
@@ -676,6 +679,14 @@ def _optional_bearer_header(
     token_env = str(adapter_config.get(config_key, default_env))
     token = os.environ.get(token_env) or os.environ.get(default_env)
     return {"Authorization": f"Bearer {token}"} if token else {}
+
+
+def _is_safe_public_url(url: str) -> bool:
+    try:
+        resolve_and_validate(url)
+    except SsrfError:
+        return False
+    return True
 
 
 def _string_list(value: object) -> list[str]:

@@ -344,7 +344,11 @@ async def test_rss_feed_adapter_yields_entries_dedupes_and_rejects_private(
     import httpx
 
     monkeypatch.setattr(
-        socket, "getaddrinfo", _fake_getaddrinfo({"feeds.example.com": ["93.184.216.34"]})
+        socket,
+        "getaddrinfo",
+        _fake_getaddrinfo(
+            {"feeds.example.com": ["93.184.216.34"], "example.com": ["93.184.216.34"]}
+        ),
     )
     rss = """<?xml version="1.0"?>
     <rss version="2.0"><channel>
@@ -397,7 +401,11 @@ async def test_rss_feed_adapter_bounded_window_excludes_undated_entries(
     import httpx
 
     monkeypatch.setattr(
-        socket, "getaddrinfo", _fake_getaddrinfo({"feeds.example.com": ["93.184.216.34"]})
+        socket,
+        "getaddrinfo",
+        _fake_getaddrinfo(
+            {"feeds.example.com": ["93.184.216.34"], "example.com": ["93.184.216.34"]}
+        ),
     )
     rss = """<?xml version="1.0"?>
     <rss version="2.0"><channel>
@@ -433,6 +441,50 @@ async def test_rss_feed_adapter_bounded_window_excludes_undated_entries(
 
 
 @pytest.mark.asyncio
+async def test_rss_feed_adapter_skips_entries_with_blocked_links(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    import httpx
+
+    monkeypatch.setattr(
+        socket,
+        "getaddrinfo",
+        _fake_getaddrinfo(
+            {"feeds.example.com": ["93.184.216.34"], "example.com": ["93.184.216.34"]}
+        ),
+    )
+    rss = """<?xml version="1.0"?>
+    <rss version="2.0"><channel>
+      <item>
+        <guid>blocked</guid><title>Blocked</title>
+        <link>http://169.254.169.254/latest/meta-data</link>
+        <pubDate>Tue, 05 Mar 2024 10:00:00 GMT</pubDate>
+      </item>
+      <item>
+        <guid>allowed</guid><title>Allowed</title>
+        <link>https://example.com/allowed</link>
+        <pubDate>Tue, 05 Mar 2024 11:00:00 GMT</pubDate>
+      </item>
+    </channel></rss>"""
+    client = httpx.AsyncClient(
+        transport=httpx.MockTransport(lambda request: httpx.Response(200, text=rss))
+    )
+    adapter = RssFeedAdapter()
+    docs: list[RawDocument] = []
+    async for doc in adapter.fetch(
+        adapter_config={"feed_urls": ["https://feeds.example.com/rss.xml"]},
+        max_documents=5,
+        http_client=client,
+    ):
+        docs.append(doc)
+    await client.aclose()
+
+    assert [(doc.external_id, doc.url) for doc in docs] == [
+        ("allowed", "https://example.com/allowed")
+    ]
+
+
+@pytest.mark.asyncio
 async def test_rss_feed_adapter_tracks_cursor_per_feed_and_skips_identifierless_entries(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -445,6 +497,7 @@ async def test_rss_feed_adapter_tracks_cursor_per_feed_and_skips_identifierless_
             {
                 "feeds-a.example.com": ["93.184.216.34"],
                 "feeds-b.example.com": ["93.184.216.35"],
+                "example.com": ["93.184.216.34"],
             }
         ),
     )

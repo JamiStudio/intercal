@@ -375,6 +375,11 @@ The first proof consumes the same adapters, provenance rules, and public query p
   `unclassified`, and no reviewed first-proof source rows exist for GPT/Claude/Gemini/Llama/MCP
   coverage. Next coordinator action: dispatch Workstream 4 pass 4 to add/verify first-proof source
   rows and run bounded backfill/live-proof where possible.
+- 2026-06-06T14:35:13-04:00 — Dispatched Workstream 4 pass 4 to agent
+  `019e9e37-80c7-7ff1-aed8-7b75dcc65e21` (`Beauvoir`). Ownership boundary: corpus quality/query
+  proof surfaces, first-proof source rows/scripts/seeds if source-owned, bounded backfill/live-proof
+  tooling, operations docs, related tests, Workstream 4 roadmap status, and changelog. Next
+  coordinator action: poll in short intervals, record result, then gate the pass 4 commit.
 
 ## Workstream 1: Corpus Scope And Source Taxonomy
 

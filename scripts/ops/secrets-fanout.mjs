@@ -34,10 +34,11 @@ const VALID_TARGETS = ['vercel', 'github', 'cloudrun'];
 function parseArgs(argv) {
   let target = 'all';
   let dryRun = false;
-  for (let i = 0; i < argv.length; i++) {
-    const arg = argv[i];
+  const args = argv.filter((arg) => arg !== '--');
+  for (let i = 0; i < args.length; i++) {
+    const arg = args[i];
     if (arg === '--dry-run') dryRun = true;
-    else if (arg === '--target') target = argv[++i];
+    else if (arg === '--target') target = args[++i];
     else if (arg.startsWith('--target=')) target = arg.slice('--target='.length);
     else {
       console.error(`Unknown argument: ${arg}`);

@@ -39,6 +39,22 @@ export {
 } from './auth/index.js';
 export type { CoreConfig } from './config.js';
 export { loadConfig } from './config.js';
+export type {
+  CorpusDateRangeGate,
+  CorpusQualityCheck,
+  CorpusQualityEvaluation,
+  CorpusQualityGateConfig,
+  CorpusQualityReport,
+  CountMetric,
+  DateRangeCoverageMetric,
+  EntityCoverageMetric,
+} from './corpus-quality.js';
+export {
+  evaluateCorpusQualityReport,
+  FIRST_PROOF_CORPUS_QUALITY_CONFIG,
+  FULL_AI_HISTORY_CORPUS_QUALITY_CONFIG,
+  queryCorpusQualityReport,
+} from './corpus-quality.js';
 export type { Db } from './db/client.js';
 export { createDb, sql } from './db/client.js';
 export type { Database } from './db/types.js';

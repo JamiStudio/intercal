@@ -610,6 +610,14 @@ surfacing, adversarial wrong-value verification, and evidence search. This pass 
 gate/query machinery without claiming production corpus coverage. Live first-proof and full-taxonomy
 passes remain open until real backfilled evidence passes `live-first-proof` and `live-full`.
 
+Pass 1 replacement note: the fresh replacement pass rebuilt the null-filled stale Workstream 4 files
+from live source truth. `packages/core` now exports the quality report/evaluator, the dev verifier
+loads that core surface and uses rollback-scoped seed rows for the first-proof query set, and
+`docs/operations/corpus-quality-gates.md` documents the seeded, live first-proof, and live full
+commands. This pass did not run a live database corpus proof because no `DATABASE_URL` was available
+in the local shell; production coverage claims remain blocked on real backfilled evidence passing the
+live modes.
+
 ## Workstream 5: Public Intercal Knowledge Experience
 
 Goal: Replace the thin dashboard shell with the full read-only public product surface.

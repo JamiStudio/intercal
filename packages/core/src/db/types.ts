@@ -79,6 +79,7 @@ export interface ClaimsTable {
   source_document_ids: string[];
   contradiction_status: string;
   status: string;
+  metadata: Json;
   // claims has no dedicated transaction-time column (unlike relationships/fact_versions).
   // created_at is the row's transaction time — when Intercal recorded the claim — and is the
   // source for the contract's required Claim.recordedAt. updated_at tracks last mutation.
@@ -149,20 +150,25 @@ export interface SourceDocumentsTable {
   ingested_at: Date;
   cleaned_text: string | null;
   document_type: string | null;
+  topics_hint: string[] | null;
   redistribution_allowed: boolean;
   // Source-policy snapshot (migration 0025): when false, no derived snippet/summary of the body
   // may be emitted (citation is still allowed unless citation_only also restricts it).
   summary_allowed: boolean;
   citation_only: boolean;
+  metadata: Json;
 }
 
 export interface SourcesTable {
   id: string;
   slug: string;
   name: string;
+  source_type: string;
+  adapter_name: string;
   is_active: boolean;
   last_run_at: Date | null;
   reliability_score: string | null;
+  metadata: Json;
 }
 
 export interface IngestionRunsTable {

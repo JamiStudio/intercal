@@ -186,3 +186,12 @@ jobs:
           } >> "$GITHUB_STEP_SUMMARY"
 
           exit $status
+
+      # Defense-in-depth: shred the SA-key file even if the run failed/timed out.
+      # GitHub-hosted runners are ephemeral (the workspace is destroyed after the job),
+      # but an explicit always-run cleanup keeps the credential from outliving the step
+      # on self-hosted/reused runners and makes the secret's lifetime obvious. No value
+      # is printed; `rm -f` is a no-op when the key was absent (Gemini-only runs).
+      - name: Remove Vertex ADC key file
+        if: always()
+        run: rm -f "$RUNNER_TEMP/gcp-sa.json"

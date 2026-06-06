@@ -144,6 +144,11 @@ Status: [x] Complete (2026-06-05) — scheduled CD live. Runbook: `docs/operatio
 The schedule is enabled (Plan 02 pipeline runs end-to-end via `intercal-pipeline run|run-all`).
 actionlint clean; verified by an actual `gh workflow run` against a throwaway Neon branch (small cap)
 and a small idempotent prod re-run — real data landed, no duplicate canonical records, no secrets in logs.
+Audit-2 (2026-06-05): **shred the Vertex SA-key file on `if: always()`** so the credential's lifetime is
+bounded on success/failure/timeout (defense in depth for self-hosted/reused runners; GitHub-hosted runners
+are ephemeral anyway). Rest of the workflow audited clean — no `set -x` on secret steps, `database_url_override`
+never echoed, health summary is counters-only, schedule/concurrency/timeout sane, `permissions` minimal,
+`setup-uv` exact-pinned + `--frozen`, non-zero exit on failure, same CLI as the W4 Cloud Run path.
 
 Implementation tasks:
 

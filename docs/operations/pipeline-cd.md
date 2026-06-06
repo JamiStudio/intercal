@@ -75,7 +75,9 @@ consumes them by name — it holds no values.
 - **LLM:** `LLM_PROVIDER` selects the adapter. For **Vertex** (primary), the workflow writes the
   fanned `GOOGLE_SERVICE_ACCOUNT_KEY` (SA JSON) to a `chmod 600` file under `$RUNNER_TEMP` and points
   `GOOGLE_APPLICATION_CREDENTIALS` at it (standard ADC). For the **Gemini** fallback, `GEMINI_API_KEY`
-  is used directly. The key file lives only in the runner's ephemeral workspace and is never echoed.
+  is used directly. The key file lives only in the runner's ephemeral workspace, is never echoed, and
+  is shredded by an `if: always()` cleanup step so the credential never outlives the job (defense in
+  depth — matters for any self-hosted/reused runner; GitHub-hosted runners are destroyed anyway).
 
 **No secret value is ever printed.** The CLI's health summary (counters + timing + status) is the
 only run output, surfaced to the job's **step summary**; logs go to stderr. The job exits non-zero

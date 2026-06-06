@@ -174,6 +174,12 @@ The first proof consumes the same adapters, provenance rules, and public query p
   per-repo page cursors, and bounded per-run page walking; registered all adapters in
   `SourceRegistry`; added focused adapter, cursor, SSRF, and source-policy ingestion tests. This
   pass does not add source rows or backfill execution; those remain Workstream 3/4 responsibilities.
+- 2026-06-06T12:12:25-04:00 — Dispatched mandatory Workstream 2 pass 2 to agent
+  `019e9db4-dbe5-7083-829b-e8745aa32f82` (`Pasteur`). Ownership boundary: Workstream 2 adapters,
+  source registry, adapter/ingest tests, Workstream 2 roadmap status, and changelog. Fresh-context
+  audit targets include source policy metadata, SSRF/URL validation, pagination/cursors, dedup,
+  bounded date windows, direct fact-write avoidance, and overclaiming. Next coordinator action:
+  poll in short intervals, record result, then apply the second-pass gate.
 
 ## Workstream 1: Corpus Scope And Source Taxonomy
 

@@ -405,6 +405,12 @@ The first proof consumes the same adapters, provenance rules, and public query p
   proof surfaces, broad source rows/scripts/seeds, operations docs, related tests, Workstream 4
   roadmap status, and changelog. Next coordinator action: poll in short intervals, record result,
   then gate the pass 6 commit.
+- 2026-06-06T15:42:00-04:00 — Workstream 4 pass 6 returned complete. Commit:
+  `060a960f7ed5d9e001a501e611da824026cfe156` (`fix(core): filter entity facts by as-of date`),
+  pushed to `origin/main`. Gate result: 4 files and 45 LOC passes the numeric gate, but contents
+  are a meaningful point-in-time query correctness fix plus verifier tightening. Seeded,
+  live-first, and live-full verifier modes still pass. Next coordinator action: dispatch Workstream
+  4 pass 7 strict quiet audit.
 - 2026-06-06T15:45:00-04:00 — Workstream 4 pass 6 strict quiet audit returned complete. Found and
   fixed one query-path proof gap: `get_entity(..., at_date=...)` now filters returned facts by claim
   valid-time, and the corpus verifier now fails if the `get_entity ChatGPT as_of` proof includes any

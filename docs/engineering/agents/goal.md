@@ -148,7 +148,7 @@ This is the only place the orchestrator makes on-the-fly calls. Everywhere else,
 
 Before final response:
 
-- Stop any helper processes started during the session (dev servers, local `docker compose` infra, pipeline jobs).
+- Stop any helper processes started during the session (dev servers, pipeline jobs).
 - Confirm no secrets were written to tracked files or command output artifacts.
 - Keep the active roadmap and durable docs accurate.
 - Leave unrelated dirty/untracked files untouched.

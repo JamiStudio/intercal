@@ -445,6 +445,12 @@ The first proof consumes the same adapters, provenance rules, and public query p
   proof surfaces, broad source rows/scripts/seeds, operations docs, related tests, Workstream 4
   roadmap status, and changelog. Next coordinator action: poll in short intervals, record result,
   then gate the pass 9 commit.
+- 2026-06-06T18:36:00-04:00 — Workstream 4 pass 9 returned complete. Commit:
+  `bf0976979ddd1a2627a7aa2a926fd8f7088cd3e9` (`fix(core): gate restricted evidence body search`),
+  pushed to `origin/main`. Gate result: 6 files and 54 LOC passes the numeric gate, but contents are
+  a meaningful source-policy query fix preventing restricted body text from being exposed through
+  search-result existence. Seeded, live-first, and live-full verifier modes still pass. Next
+  coordinator action: dispatch Workstream 4 pass 10 strict quiet audit.
 
 ## Workstream 1: Corpus Scope And Source Taxonomy
 

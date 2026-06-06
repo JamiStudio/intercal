@@ -133,7 +133,8 @@ Sequence: Plan 07 W1 (secrets) first → then auth cluster (Plan04 W1 + Plan07 W
 | t83 | 04/W2 | P2 | Opus | af5b0c7a2bd3e82b0 | returned OK; fixed SSRF body-cap-not-enforced-on-adapter-path (mem exhaustion); cap in transport stream+CL; 52 SSRF tests; policy e2e + live snippet-gate 5/5; no bypass found | 73ce036 | 6f +457/-15 | security fix → P3 confirm-quiet |
 | t84 | 04/W2 | P3 | Opus | abfb60fe1bb26d475 | QUIET → **W2 CLOSED** (SSRF no-bypass adversarial-verified; source policy e2e; live snippet-gate) | (none) | 0 | Plan04 W3 audit |
 | t85 | 04/W3 | P1 | Opus | ac9677807fb46b65a | returned OK; append-only audit_events (mig 0026 trigger-enforced), recordAuditEvent+redaction, wired key issue/revoke in-tx, deferred seams; LIVE 14/14 no-secrets+mutation-rejected; 98 core tests | 729fd53 | 13f +881/-49 | gate P2 |
-| t86 | 04/W3 | P2 | Opus | — | dispatched | — | — | gate |
+| t86 | 04/W3 | P2 | Opus | a0c7fea16251bdd5f | returned OK; fixed TRUNCATE-bypass (mig 0027 BEFORE TRUNCATE) + redaction gaps (dsn/conn-string/renamed); atomicity confirmed; LIVE 15/15 (U/D/TRUNCATE rejected); 99 core tests | 433f8af | 9f +175/-22 | integrity fixes → P3 confirm-quiet |
+| t87 | 04/W3 | P3 | Opus | — | dispatched (confirm-quiet) | — | — | gate; close W3 |
 
 **Phase D progress:** Plan07 W1✅,W3✅,W4✅,W5/04W1-REST✅,W6✅ · Plan04 W2✅ | remaining: Plan04 W3 audit, W4 feedback, W5 subs, W6 observability, W7 deploy-paths/backups(+Plan07 W7), W8 runbook; Plan07 W8 budget.
 

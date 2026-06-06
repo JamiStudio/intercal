@@ -29,6 +29,7 @@ coverage/
 pgdata/
 miniodata/
 *.local
+.agents/
 
 # OS / editor
 .DS_Store

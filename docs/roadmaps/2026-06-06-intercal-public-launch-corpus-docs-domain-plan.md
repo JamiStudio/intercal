@@ -259,6 +259,14 @@ The first proof consumes the same adapters, provenance rules, and public query p
   `019e9dd7-a767-73b1-a9ee-defe3c6aea96` (`Bernoulli`). Ownership boundary: Workstream 2 adapters,
   source registry, related adapter tests, Workstream 2 roadmap status, and changelog. Next
   coordinator action: poll in short intervals, record result, then gate the pass 7 commit.
+- 2026-06-06T13:24:00-04:00 — Workstream 2 pass 7 strict quiet audit returned quiet. Fresh
+  context rechecked source-policy metadata, date-window filtering, cursor stability, dedup scope,
+  feed and item URL validation, undated and identifier-less suppression, request caps, GitHub
+  owner/repo validation, direct fact-write avoidance, hidden demo data/mocks, and overclaiming
+  against the live adapter and ingest code. No additional adapter, source-registry, ingest, source
+  catalog, backfill execution, query gate, dashboard, docs/marketing, domain, or direct fact-write
+  change is required. Workstream 2 is closed; Workstream 3 owns source-row expansion, backfill
+  execution, budgets, retries, and operator controls.
 
 ## Workstream 1: Corpus Scope And Source Taxonomy
 
@@ -381,6 +389,14 @@ public evidence citations. No source catalog rows, backfill execution, query gat
 marketing, domain, or direct fact-write work was added. Because this pass made meaningful adapter
 hardening changes, another fresh-context quiet pass may still be needed before Workstream 2 is closed.
 
+Pass 7 closeout note: the strict quiet audit found no remaining meaningful adapter-foundation gap.
+Source-policy metadata still snapshots through `ingest_source`; historical date windows, request caps,
+cursor state, per-feed dedup, feed/item URL validation, GitHub owner/repo validation, and
+identifier-less/undated suppression are covered by the live adapter code and focused tests. No code,
+source catalog rows, backfill execution, query gates, dashboard, docs/marketing, domain, changelog,
+or direct fact-write work was added. Workstream 2 is closed as quiet; Workstream 3 owns execution,
+budget, retries, operator controls, and source-row expansion.
+
 Suggested verification:
 
 - `pnpm py:test services/shared services/ingest services/pipeline`
@@ -393,7 +409,7 @@ Goal: Run historical backfill as a real production-grade pipeline path with budg
 
 Depends on:
 
-- [ ] Workstream 2 adapters.
+- [x] Workstream 2 adapters.
 - [ ] Existing Actions and Cloud Run job topology.
 
 Enables:

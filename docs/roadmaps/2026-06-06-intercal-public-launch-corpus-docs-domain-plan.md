@@ -285,6 +285,12 @@ The first proof consumes the same adapters, provenance rules, and public query p
   ingest cursor/run semantics, ops scripts/workflows, operations docs, resource budget, related
   Python tests, Workstream 3 roadmap status, and changelog. Next coordinator action: poll in short
   intervals, record result, then apply the second-pass gate.
+- 2026-06-06T13:24:00-04:00 — Workstream 3 pass 2 returned complete. Commit:
+  `d10a7e0bdb267839504e7499d01f813b208632bb` (`fix(ingest): record source http request usage`),
+  pushed to `origin/main`. Gate result: 6 files and 286 LOC passes the numeric gate, but contents
+  are meaningful HTTP usage telemetry plus tests. Queue command accounting remains explicitly
+  unavailable because this backfill path does not instantiate `QueuePort` and queue adapters do not
+  emit command counts. Next coordinator action: dispatch Workstream 3 pass 3 quiet confirmation.
 
 ## Workstream 1: Corpus Scope And Source Taxonomy
 

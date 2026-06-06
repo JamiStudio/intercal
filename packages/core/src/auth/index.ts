@@ -2,6 +2,21 @@
 
 export type { IssuedKey, IssueKeyInput, KeySummary } from './admin.js';
 export { issueApiKey, listApiKeys, revokeApiKey } from './admin.js';
+export type {
+  AuditAction,
+  AuditActor,
+  AuditActorType,
+  AuditEventInput,
+  AuditEventRecord,
+  AuditSeverity,
+  QueryAuditEventsFilter,
+} from './audit.js';
+export {
+  AUDIT_ACTIONS,
+  queryAuditEvents,
+  recordAuditEvent,
+  recordAuditEventStrict,
+} from './audit.js';
 export type { GeneratedKey } from './keys.js';
 export { generateApiKey, hashApiKey, hashesEqual, KEY_PREFIX, parseBearer } from './keys.js';
 export type { Scope } from './scopes.js';

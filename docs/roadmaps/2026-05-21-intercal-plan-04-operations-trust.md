@@ -225,10 +225,32 @@ Suggested verification:
 
 Goal: Record trust-sensitive actions in queryable audit logs.
 
+Status: [x] **Complete** (2026-06-06). `audit_events` is now an enforced append-only **trust ledger**.
+The table existed (migration 0022, "append-only by policy"); this pass (1) enforced append-only in the
+DB — `0026_audit_events_append_only.sql` adds `BEFORE UPDATE`/`BEFORE DELETE` triggers that raise on any
+row mutation, so history cannot be silently rewritten/erased; (2) added a centralized emit module in
+`@intercal/core` (`src/auth/audit.ts`): `recordAuditEvent` (best-effort) + `recordAuditEventStrict`
+(throws; used inside a tx), an `AUDIT_ACTIONS` vocabulary, `queryAuditEvents` read helper, typed
+actor/event interfaces, and defensive recursive redaction of secret-bearing keys (no raw key/hash/token
+ever lands); (3) wired emission at the real trust-sensitive points that exist NOW — `issueApiKey`
+(`api_key.issue`, severity medium) and `revokeApiKey` (`api_key.revoke`, severity high) each write their
+audit row in the **same transaction** as the key mutation, recording only safe identity/metadata
+(id/name/keyPrefix/scopes/owner/expiry; before/after active→revoked + reason). The ops CLI
+(`scripts/ops/keys.mjs`) threads the operator identity (`--by`) as the actor. Durable doc:
+`docs/security/audit-events.md`. **Live-verified** on a throwaway Neon branch (deleted after):
+`scripts/dev/verify-audit.mjs` 14/14 — correct actor/action/target/severity + before/after, NO secret
+material in any row, UPDATE and DELETE both rejected; the CLI path writes both rows with the operator
+actor.
+
+Deferred (explicit, emit seam ready — NOT faked): feedback/review (W4), subscriptions (W5),
+source-policy changes (W2/Plan 06), entity merge / claim retraction / entity-resolution decisions
+(Plan 02/Plan 06). Those surfaces will call the centralized emit helper with the reserved action
+strings rather than inventing their own.
+
 Depends on:
 
-- [ ] Plan 01 `audit_events` schema.
-- [ ] Workstream 1 auth identities.
+- [x] Plan 01 `audit_events` schema (migration 0022; append-only enforced by 0026).
+- [x] Workstream 1 auth identities.
 
 Enables:
 
@@ -241,25 +263,30 @@ Repo guidance:
 
 Primary areas:
 
-- `packages/shared`
-- `packages/api`
-- `services/resolve`
+- `packages/core` (auth/audit emit + query, key lifecycle wiring)
+- `db/` (append-only enforcement migration)
+- `scripts/ops` (operator actor)
 - `docs/security/audit-events.md`
 
 Implementation tasks:
 
-- [ ] Add audit writer and shared event types.
-- [ ] Record entity merges, splits/unmerges, claim corrections, source review actions, provider config changes, subscription changes, admin actions, and manual overrides.
-- [ ] Add audit query helpers for operations.
+- [x] Add audit writer and shared event types. (`@intercal/core` `recordAuditEvent` /
+      `recordAuditEventStrict` / `queryAuditEvents` + `AUDIT_ACTIONS`; secret-redaction guardrail.)
+- [~] Record entity merges, splits/unmerges, claim corrections, source review actions, provider
+      config changes, subscription changes, admin actions, and manual overrides. (Key issue/revoke
+      wired now; the rest are deferred to their owning workstreams with a ready emit seam — not faked.)
+- [x] Add audit query helpers for operations. (`queryAuditEvents` — filter by actor/action/target/
+      severity, newest-first, capped.)
 
 Exit criteria:
 
-- [ ] Trust-sensitive fixtures write expected audit events.
+- [x] Trust-sensitive actions write expected audit events. (Real key issue/revoke → append-only
+      `api_key.issue`/`api_key.revoke` rows; proven live 14/14 + the CLI path.)
 
 Suggested verification:
 
-- `pnpm test -- audit`
-- `uv run pytest services/resolve/tests -k audit`
+- `pnpm --filter @intercal/core test` (`auth/audit.test.ts`)
+- `DATABASE_URL=<neon-branch> node scripts/dev/verify-audit.mjs` (live append-only + emit proof)
 
 ## Workstream 4: Feedback And Review Records
 

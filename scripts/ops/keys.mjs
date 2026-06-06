@@ -10,9 +10,12 @@
 //
 //   node scripts/ops/keys.mjs issue --name "<label>" [--scopes read,submit:feedback]
 //                                   [--owner-type user|service|system] [--owner-id <id>]
-//                                   [--rpm <n>] [--rpd <n>] [--expires-days <n>]
+//                                   [--rpm <n>] [--rpd <n>] [--expires-days <n>] [--by "<operator>"]
 //   node scripts/ops/keys.mjs revoke --id <uuid> [--reason "<text>"] [--by "<operator>"]
 //   node scripts/ops/keys.mjs list
+//
+// Issue/revoke each append an append-only audit_events row (api_key.issue / api_key.revoke) recording
+// the operator (--by, default "ops-cli"), the key id, and safe metadata — NEVER the raw key or hash.
 //
 // Reads DATABASE_URL from the environment or a local .env (same loader posture as migrate.mjs).
 
@@ -108,6 +111,8 @@ async function main() {
         requestsPerMinute: flags.rpm ? Number(flags.rpm) : null,
         requestsPerDay: flags.rpd ? Number(flags.rpd) : null,
         expiresAt,
+        // Audit actor: the operator running this CLI (no secret material).
+        actor: { type: 'admin', id: flags.by ? String(flags.by) : 'ops-cli' },
       });
       // The ONLY place the raw key is ever shown. Copy it now — it is not recoverable.
       console.log('[keys] issued — copy the raw key now; it is shown ONCE and not stored:\n');
@@ -121,9 +126,11 @@ async function main() {
 
     if (command === 'revoke') {
       if (!flags.id) usage('revoke requires --id');
+      const revokedBy = flags.by ? String(flags.by) : 'ops-cli';
       await revokeApiKey(db, String(flags.id), {
-        revokedBy: flags.by ? String(flags.by) : 'ops-cli',
+        revokedBy,
         reason: flags.reason ? String(flags.reason) : undefined,
+        actor: { type: 'admin', id: revokedBy },
       });
       console.log(`[keys] revoked ${flags.id}`);
       return;

@@ -2,15 +2,23 @@
 
 // Auth: key primitives, verification, operator lifecycle, usage recording, scopes.
 export type {
+  AuditAction,
+  AuditActor,
+  AuditActorType,
+  AuditEventInput,
+  AuditEventRecord,
+  AuditSeverity,
   AuthenticatedKey,
   GeneratedKey,
   IssuedKey,
   IssueKeyInput,
   KeySummary,
+  QueryAuditEventsFilter,
   Scope,
   UsageEvent,
 } from './auth/index.js';
 export {
+  AUDIT_ACTIONS,
   authenticateHeader,
   authenticateKey,
   generateApiKey,
@@ -21,7 +29,10 @@ export {
   KEY_PREFIX,
   listApiKeys,
   parseBearer,
+  queryAuditEvents,
   READ_SCOPE,
+  recordAuditEvent,
+  recordAuditEventStrict,
   recordUsageEvent,
   revokeApiKey,
   SCOPES,

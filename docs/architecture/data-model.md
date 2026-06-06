@@ -260,9 +260,9 @@ API key records. Only the SHA-256 hash of the raw key is stored (`key_hash UNIQU
 
 Operational records of API and MCP tool calls. Used for rate limiting, billing, and analytics. Not a security audit log. `ip_address` should be anonymized per privacy policy.
 
-**`audit_events`** — `db/migrations/0022_audit_events.sql`
+**`audit_events`** — `db/migrations/0022_audit_events.sql` (append-only enforced by `0026_audit_events_append_only.sql`)
 
-Append-only security and data-quality audit log. Captures actor, action, target, before/after state snapshots, and rationale for: entity merges and reversals, claim corrections and retractions, source submissions, key operations, admin actions, and entity resolution decisions. Never update or delete rows. `severity` levels: `info`, `low`, `medium`, `high`, `critical`.
+Append-only security and data-quality audit log — the trust ledger of who did what to trust-sensitive state. Captures actor, action, target, before/after state snapshots, and rationale for: entity merges and reversals, claim corrections and retractions, source submissions, key operations (issue/revoke), admin actions, and entity resolution decisions. `severity` levels: `info`, `low`, `medium`, `high`, `critical`. The append-only invariant is enforced in the database (migration 0026): a `BEFORE UPDATE`/`BEFORE DELETE` trigger raises on any row mutation, so history cannot be silently rewritten or erased through the data path. Emission is centralized in `@intercal/core` (`recordAuditEvent` / `recordAuditEventStrict`); the key lifecycle (`issueApiKey`/`revokeApiKey`) writes its audit row in the same transaction as the mutation. No secret values are ever written (the emit helper also redacts secret-bearing keys defensively). See `docs/security/audit-events.md`.
 
 ---
 
@@ -279,5 +279,5 @@ Append-only security and data-quality audit log. Captures actor, action, target,
 | Embeddings carry model + dim | `model NOT NULL`, `dim NOT NULL` on all embedding tables | DB constraint |
 | Different-dim model = new column/table | Convention documented in SQL comments | Code review |
 | API keys store only hash | `key_hash NOT NULL UNIQUE`; no plaintext column | Schema design |
-| Audit events are append-only | `audit_events` | Application policy + comments |
+| Audit events are append-only | `audit_events` | DB trigger (migration 0026) rejects UPDATE/DELETE |
 | Role/office ≠ person alias | Separate entity types + typed relationships | Schema design |

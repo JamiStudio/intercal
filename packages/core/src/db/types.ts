@@ -222,6 +222,34 @@ export interface UsageEventsTable {
   created_at: DefaultedTimestamp;
 }
 
+/**
+ * Audit events (db/migrations/0022_audit_events.sql; append-only enforced by 0026). The trust
+ * ledger: who did what to trust-sensitive state. INSERT-only — the DB rejects UPDATE/DELETE, so
+ * this interface intentionally has no update markers. `before_state`/`after_state`/`metadata` are
+ * jsonb written as a JSON string on insert and read back as parsed JSON. No secret values are ever
+ * written here (see packages/core/src/auth/audit.ts).
+ */
+export interface AuditEventsTable {
+  id: Generated<string>;
+  // 'api_key' | 'system' | 'pipeline' | 'human' | 'admin'
+  actor_type: string;
+  actor_id: string;
+  actor_ip: string | null;
+  // Dot-namespaced action, e.g. 'api_key.issue', 'api_key.revoke'.
+  action: string;
+  // 'entity' | 'claim' | 'source' | 'api_key' | 'relationship' | ...
+  target_type: string;
+  target_id: string;
+  before_state: ColumnType<Json, string | null, never> | null;
+  after_state: ColumnType<Json, string | null, never> | null;
+  rationale: string | null;
+  request_id: string | null;
+  // 'info' | 'low' | 'medium' | 'high' | 'critical'
+  severity: Generated<string>;
+  metadata: ColumnType<Json, string, never>;
+  created_at: DefaultedTimestamp;
+}
+
 export interface Database {
   entities: EntitiesTable;
   entity_aliases: EntityAliasesTable;
@@ -236,4 +264,5 @@ export interface Database {
   ingestion_runs: IngestionRunsTable;
   api_keys: ApiKeysTable;
   usage_events: UsageEventsTable;
+  audit_events: AuditEventsTable;
 }

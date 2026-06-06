@@ -106,7 +106,9 @@ Do not run `--fresh` against any persistent hosted branch.
 
 ## Vercel App, REST, And MCP
 
-Vercel builds the dashboard package with `packages/dashboard/vercel.json`:
+Set the Vercel project **Root Directory** to `packages/dashboard`. That makes Vercel read
+`packages/dashboard/vercel.json`, while the build command intentionally steps back to the monorepo
+root for contracts and workspace package builds:
 
 ```text
 cd ../.. && pnpm contracts:build && pnpm -r --filter "./packages/**" --filter "!@intercal/dashboard" exec tsc -b --force && pnpm --filter @intercal/dashboard build
@@ -114,7 +116,7 @@ cd ../.. && pnpm contracts:build && pnpm -r --filter "./packages/**" --filter "!
 
 Deploy flow:
 
-1. Connect the GitHub repo to the Vercel project.
+1. Connect the GitHub repo to the Vercel project with Root Directory `packages/dashboard`.
 2. Fan app-runtime env to Vercel.
 3. Open a PR and let Vercel create a preview deployment.
 4. Smoke preview with the commands below.

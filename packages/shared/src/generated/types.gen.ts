@@ -167,7 +167,7 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        /** @description Enqueue bounded notifications for matching subscriptions after a known knowledge change. */
+        /** @description Enqueue bounded notifications for matching subscriptions owned by the authenticated API key after a known knowledge change. */
         post: operations["dispatchSubscriptionNotifications"];
         delete?: never;
         options?: never;

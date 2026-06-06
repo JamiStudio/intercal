@@ -482,7 +482,7 @@ op pollSubscriptionNotifications(@body body: PollSubscriptionRequest): Subscript
 @tag("subscriptions")
 @route("/v1/subscriptions/dispatch")
 @post
-@doc("Enqueue bounded notifications for matching subscriptions after a known knowledge change.")
+@doc("Enqueue bounded notifications for matching subscriptions owned by the authenticated API key after a known knowledge change.")
 op dispatchSubscriptionNotifications(@body body: DispatchSubscriptionRequest): DispatchSubscriptionResponse | ApiError;
 
 @tag("subscriptions")

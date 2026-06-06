@@ -425,7 +425,7 @@
     "/v1/subscriptions/dispatch": {
       "post": {
         "operationId": "dispatchSubscriptionNotifications",
-        "description": "Enqueue bounded notifications for matching subscriptions after a known knowledge change.",
+        "description": "Enqueue bounded notifications for matching subscriptions owned by the authenticated API key after a known knowledge change.",
         "parameters": [],
         "responses": {
           "200": {

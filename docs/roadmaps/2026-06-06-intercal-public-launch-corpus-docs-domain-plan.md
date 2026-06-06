@@ -210,6 +210,10 @@ The first proof consumes the same adapters, provenance rules, and public query p
   MediaWiki per-page pagination when skipped rows would otherwise keep walking pages, and sort
   registry releases deterministically when timestamps tie. No source catalog rows, backfill
   execution, query gates, dashboard, docs, marketing, or domain work was added.
+- 2026-06-06T12:29:07-04:00 — Dispatched Workstream 2 pass 4 quiet-check pass to agent
+  `019e9dc4-1aa9-71a0-aee5-4dbc0c112c6f` (`Confucius`). Ownership boundary: Workstream 2
+  adapters, source registry, related adapter tests, Workstream 2 roadmap status, and changelog.
+  Next coordinator action: poll in short intervals, record result, then gate the pass 4 commit.
 
 ## Workstream 1: Corpus Scope And Source Taxonomy
 

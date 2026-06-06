@@ -325,6 +325,11 @@ The first proof consumes the same adapters, provenance rules, and public query p
   a stale tool-session handle after repeated timed polls. Previous status was `pending_init`; no
   result or changes were accepted from that handle. Next coordinator action: dispatch replacement
   Workstream 4 pass 1 from current repo state.
+- 2026-06-06T13:57:18-04:00 — Dispatched replacement Workstream 4 pass 1 to agent
+  `019e9e14-c73c-7250-a995-34c2fe4d682a` (`Fermat`). Ownership boundary: shared query layer,
+  API/MCP/SDK quality-gate surfaces, scripts/dev proof tooling, operations docs, related tests,
+  Workstream 4 roadmap status, and changelog. Next coordinator action: poll in short intervals,
+  record result, then dispatch mandatory Workstream 4 pass 2 after pass 1 lands.
 
 ## Workstream 1: Corpus Scope And Source Taxonomy
 

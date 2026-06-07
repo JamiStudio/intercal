@@ -1325,11 +1325,11 @@ Goal: Verify and document the Intercal domain without moving compute prematurely
 
 Depends on:
 
-- [ ] Workstream 5 or 7 deployable Intercal public pages.
+- [x] Workstream 5 or 7 deployable Intercal public pages.
 
 Enables:
 
-- [ ] Public launch smoke checks and release audit.
+- [x] Public launch smoke checks and release audit.
 
 Repo guidance:
 
@@ -1344,16 +1344,16 @@ Primary areas:
 
 Implementation tasks:
 
-- [ ] Confirm Vercel project `intercal` uses root directory `packages/dashboard`.
+- [x] Confirm Vercel project `intercal` uses root directory `packages/dashboard`.
 - [x] Attach `intercal.jami.studio` to the Intercal Vercel project.
 - [x] Add Vercel-provided DNS records for `intercal` in Cloudflare and verify the live domain.
-- [ ] Smoke Vercel TLS, `/`, `/docs`, `/api/openapi.json`, `/api/v1/freshness`, and `/api/mcp` on the official Intercal domain.
-- [ ] Document the Intercal domain and routing runbook without storing provider secrets.
-- [ ] Note that `www.jami.studio` routing/site work is external and non-blocking.
+- [x] Smoke Vercel TLS, `/`, `/docs`, `/api/openapi.json`, `/api/v1/freshness`, and `/api/mcp` on the official Intercal domain.
+- [x] Document the Intercal domain and routing runbook without storing provider secrets.
+- [x] Note that `www.jami.studio` routing/site work is external and non-blocking.
 
 Exit criteria:
 
-- [ ] `intercal.jami.studio` resolves through Cloudflare DNS to the Vercel-hosted Intercal project with TLS and canonical behavior proven.
+- [x] `intercal.jami.studio` resolves through Cloudflare DNS to the Vercel-hosted Intercal project with TLS and canonical behavior proven.
 
 Suggested verification:
 
@@ -1371,6 +1371,30 @@ Pass 1 dispatch note:
   `docs/operations/account-setup.md`, the roadmap, and `.changes/` as needed. Next action:
   wait for the pass 1 result, inspect commit stats/body, then dispatch the mandatory pass 2 from
   another context regardless of whether pass 1 is clean.
+
+Pass 1 closeout note: provider and live-route audit confirmed the intended Intercal domain topology
+without moving compute to Cloudflare or depending on future Jami Studio site work. Vercel account
+scope `studio-jami` has project `intercal`; `vercel project inspect intercal` reports owner
+`jami-studio`, Root Directory `packages/dashboard`, Node.js `24.x`, and Next.js framework settings.
+`vercel project ls`, `vercel domains inspect jami.studio`, `vercel alias ls`, and
+`vercel inspect https://intercal.jami.studio` show `intercal.jami.studio` attached to the
+Ready production deployment, with existing Vercel/legacy aliases left in place for compatibility.
+Cloudflare is authoritative for `jami.studio` via `elliott.ns.cloudflare.com` and
+`irena.ns.cloudflare.com`; both authoritative nameservers answer `intercal.jami.studio` as CNAME
+`25b8236304cda166.vercel-dns-017.com` with TTL `600`, which resolves to Vercel edge addresses and
+is DNS-only rather than orange-cloud proxied. TLS is live for `CN=intercal.jami.studio` with a
+Let's Encrypt certificate valid 2026-06-06 through 2026-09-04. Live smoke over the official domain
+returned `200` for `/`, `/docs`, `/api/openapi.json`, `/api/v1/freshness?topic_or_entity=MCP%20protocol`,
+and MCP Streamable HTTP initialize POST to `/api/mcp`; an SDK MCP smoke from `packages/mcp-server`
+listed six tools and successfully called `get_entity` and `search_evidence`. A plain GET to
+`/api/mcp` returns `406`, which is expected for a browser-style request without Streamable HTTP
+headers. The current Cloudflare token can authenticate as account `jami-studio` through Wrangler
+but cannot read DNS records through the REST DNS endpoint; if pass 2 needs dashboard-side record
+metadata, use Cloudflare Dashboard > `jami.studio` > DNS > Records or a token with `Zone.DNS Read`
+for the zone. `vercel domains inspect jami.studio` still warns that the parent apex is not routed to
+Vercel; that belongs to external `jami.studio`/`www.jami.studio` site work and is not an Intercal
+subdomain blocker. Updated operations runbooks and changelog only; no app code, generated
+contracts, Cloudflare Workers/Pages compute, or unrelated studio-site routing was changed.
 
 ## Workstream 9: Release Audit And Provider Posture
 
@@ -1444,7 +1468,7 @@ Suggested verification:
 - [ ] Broad GPT-era AI-history backfill exists and is continuously refreshable.
 - [ ] Every public fact traces to source documents, claims, evidence, and fact versions or displays an explicit unknown/coverage state.
 - [ ] REST, SDK, and MCP return useful deltas and claim verification over the backfilled corpus.
-- [ ] `intercal.jami.studio` serves the Intercal public product surface, docs, REST, OpenAPI, and MCP from the accepted Vercel topology.
+- [x] `intercal.jami.studio` serves the Intercal public product surface, docs, REST, OpenAPI, and MCP from the accepted Vercel topology.
 - [ ] Docs are ready for Mintlify or same-origin rendering and include `llms.txt`, `llms-full.txt`, copyable page text, and verified examples.
 - [ ] Marketing and AI SEO surfaces are crawlable, canonical, and backed by actual product behavior.
 - [ ] Cloudflare DNS and R2 are used where they help now; compute migration remains an explicit future proof, not a current blocker.

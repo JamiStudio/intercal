@@ -25,7 +25,29 @@ in `docs/operations/secrets.md`.
 
 ## DNS And TLS
 
-Vercel owns TLS termination for the hosted app domain. The operator flow is:
+The official Intercal public domain is `https://intercal.jami.studio`. Cloudflare owns DNS for the
+parent `jami.studio` zone and Vercel owns TLS termination plus the app deployment for the Intercal
+subdomain.
+
+Verified status on 2026-06-07:
+
+- Vercel account scope `studio-jami` has project `intercal`; `vercel project inspect intercal`
+  reports owner `jami-studio`, Root Directory `packages/dashboard`, and Node.js `24.x`.
+- `vercel inspect https://intercal.jami.studio` reports a Ready production deployment for project
+  `intercal`, with aliases `intercal.jami.studio`, `intercal-studio-jami.vercel.app`,
+  `intercal-git-main-studio-jami.vercel.app`, and legacy `lntercal.vercel.app`.
+- `jami.studio` nameservers are `elliott.ns.cloudflare.com` and `irena.ns.cloudflare.com`.
+- Both Cloudflare authoritative nameservers answer `intercal.jami.studio CNAME
+  25b8236304cda166.vercel-dns-017.com` with TTL `600`; the CNAME target resolves to Vercel edge
+  addresses. Because the authoritative answer exposes the Vercel target, the record is DNS-only, not
+  Cloudflare-proxied.
+- TLS for `intercal.jami.studio` is issued by Let's Encrypt and was valid for the live smoke check
+  (`NotBefore` 2026-06-06, `NotAfter` 2026-09-04).
+- `vercel domains inspect jami.studio` still warns that the parent apex is not configured for Vercel.
+  That warning is about `jami.studio`/future `www.jami.studio` site routing and does not block the
+  Intercal subdomain, which Vercel lists under the `intercal` project.
+
+The setup flow for a future domain or DNS repair is:
 
 1. Add the domain to the Vercel project.
 2. Add the DNS records Vercel reports at the DNS provider. Use the apex/`www` records Vercel
@@ -37,12 +59,38 @@ Vercel owns TLS termination for the hosted app domain. The operator flow is:
 5. Smoke check:
 
 ```powershell
-Invoke-WebRequest https://<domain>/api/openapi.json -UseBasicParsing
-Invoke-WebRequest https://<domain>/api/v1/freshness?topic_or_entity=rust -UseBasicParsing
+Invoke-WebRequest https://intercal.jami.studio/ -UseBasicParsing
+Invoke-WebRequest https://intercal.jami.studio/docs -UseBasicParsing
+Invoke-WebRequest https://intercal.jami.studio/api/openapi.json -UseBasicParsing
+Invoke-WebRequest https://intercal.jami.studio/api/v1/freshness?topic_or_entity=MCP%20protocol -UseBasicParsing
 ```
 
 MCP clients use `https://<domain>/api/mcp`. When MCP OAuth is enabled, the Protected Resource
 Metadata document is served from the same domain; see `docs/operations/mcp-auth.md`.
+
+For an HTTP-only MCP smoke without the SDK client, initialize with the Streamable HTTP headers:
+
+```powershell
+$body = @{
+  jsonrpc = "2.0"
+  id = 1
+  method = "initialize"
+  params = @{
+    protocolVersion = "2025-06-18"
+    capabilities = @{}
+    clientInfo = @{ name = "intercal-iwr-smoke"; version = "0.0.0" }
+  }
+} | ConvertTo-Json -Depth 8 -Compress
+Invoke-WebRequest https://intercal.jami.studio/api/mcp `
+  -Method Post `
+  -Headers @{
+    Accept = "application/json, text/event-stream"
+    "Content-Type" = "application/json"
+    "MCP-Protocol-Version" = "2025-06-18"
+  } `
+  -Body $body `
+  -UseBasicParsing
+```
 
 ## Environment And Secret Fan-Out
 
@@ -125,11 +173,18 @@ Deploy flow:
 Smoke checks:
 
 ```powershell
-$base = "https://<preview-or-prod-domain>"
+$base = "https://intercal.jami.studio"
+Invoke-WebRequest "$base/" -UseBasicParsing
+Invoke-WebRequest "$base/docs" -UseBasicParsing
 Invoke-WebRequest "$base/api/openapi.json" -UseBasicParsing
-Invoke-WebRequest "$base/api/v1/freshness?topic_or_entity=rust" -UseBasicParsing
+Invoke-WebRequest "$base/api/v1/freshness?topic_or_entity=MCP%20protocol" -UseBasicParsing
 node scripts/dev/verify-mcp.mjs "$base/api/mcp"
 ```
+
+The root `node scripts/dev/verify-mcp.mjs` command expects the MCP SDK dependency to be resolvable
+from the script location. If the root workspace has not installed that dependency, run an equivalent
+SDK smoke from `packages/mcp-server`, or add the dependency to the root tooling manifest before
+making the root command mandatory.
 
 Rollback is a Vercel deployment rollback or alias promotion to the last known-good deployment. If a
 rollback crosses a database migration boundary, prefer a forward-fix migration or a Neon branch/PITR

@@ -87,11 +87,12 @@ that exception in the handoff.
 
 Prerequisites:
 
-- Production domain selected.
-- DNS ownership available through the registrar/DNS provider.
-- Vercel project has the domain attached or is ready to attach it.
-- `PUBLIC_API_BASE_URL` and optional operator-lane `VERCEL_DOMAIN` are set in `.env` after the
-  domain is known.
+- Production domain selected. Current official Intercal domain: `intercal.jami.studio`.
+- DNS ownership available through Cloudflare for the parent `jami.studio` zone.
+- Vercel project has the domain attached or is ready to attach it. Current project:
+  `studio-jami/intercal`.
+- `PUBLIC_API_BASE_URL` and optional operator-lane `VERCEL_DOMAIN` are set in `.env` after the domain
+  is known.
 
 Setup:
 
@@ -104,14 +105,32 @@ Proof commands:
 
 ```powershell
 vercel domains ls
-vercel dns ls <domain>
-nslookup <domain>
-Invoke-WebRequest https://<domain>/api/openapi.json -UseBasicParsing
-Invoke-WebRequest https://<domain>/api/v1/freshness?topic_or_entity=rust -UseBasicParsing
-node scripts/dev/verify-mcp.mjs https://<domain>/api/mcp
+vercel domains inspect jami.studio
+vercel inspect https://intercal.jami.studio
+nslookup -type=ns jami.studio
+Resolve-DnsName -Server elliott.ns.cloudflare.com -Name intercal.jami.studio -Type CNAME
+Resolve-DnsName -Server irena.ns.cloudflare.com -Name intercal.jami.studio -Type CNAME
+Invoke-WebRequest https://intercal.jami.studio/ -UseBasicParsing
+Invoke-WebRequest https://intercal.jami.studio/docs -UseBasicParsing
+Invoke-WebRequest https://intercal.jami.studio/api/openapi.json -UseBasicParsing
+Invoke-WebRequest https://intercal.jami.studio/api/v1/freshness?topic_or_entity=MCP%20protocol -UseBasicParsing
+node scripts/dev/verify-mcp.mjs https://intercal.jami.studio/api/mcp
 ```
 
-Operator-gated: real DNS/TLS proof requires a purchased/controlled domain and Vercel project access.
+Current proof from 2026-06-07:
+
+- Vercel project `intercal` is in account scope `studio-jami`; `intercal.jami.studio` is attached to
+  the project and aliases a Ready production deployment.
+- Cloudflare authoritative nameservers for `jami.studio` answer `intercal.jami.studio` as a CNAME to
+  `25b8236304cda166.vercel-dns-017.com` with TTL `600`.
+- TLS and live route smokes passed for `/`, `/docs`, `/api/openapi.json`,
+  `/api/v1/freshness?topic_or_entity=MCP%20protocol`, and MCP initialize/tools calls at `/api/mcp`.
+- `vercel domains inspect jami.studio` warns about the parent apex configuration. That is external
+  Jami Studio site work and does not block the Intercal subdomain.
+- Wrangler auth is available for Cloudflare account `jami-studio`, but the current token could not
+  read DNS records through the Cloudflare REST DNS endpoint. If dashboard-side record metadata is
+  required, use Cloudflare Dashboard > `jami.studio` > DNS > Records, or issue an operator token with
+  `Zone.DNS Read` for the `jami.studio` zone.
 
 ## SSH Keys And VPS
 
@@ -323,7 +342,7 @@ Prerequisites:
 
 - Vercel project is linked to the GitHub repo.
 - Root Directory is `packages/dashboard`.
-- Domain is attached or a `*.vercel.app` URL is accepted for the current phase.
+- Domain `intercal.jami.studio` is attached for production Intercal traffic.
 - `VERCEL_TOKEN`, `VERCEL_PROJECT_ID`, optional `VERCEL_TEAM_ID`/`VERCEL_TEAM_SLUG`, and optional
   `VERCEL_DOMAIN` remain operator-lane.
 - App-runtime names required by the dashboard/API/MCP are fanned from `.env`.
@@ -333,16 +352,29 @@ Proof commands:
 ```powershell
 vercel whoami
 vercel project ls
+vercel project inspect intercal
+vercel inspect https://intercal.jami.studio
 vercel env ls production
 vercel env ls preview
 vercel domains ls
+vercel domains inspect jami.studio
 pnpm ops:secrets-fanout -- --target vercel --dry-run
-Invoke-WebRequest https://<vercel-or-custom-domain>/api/openapi.json -UseBasicParsing
-Invoke-WebRequest https://<vercel-or-custom-domain>/api/v1/freshness?topic_or_entity=rust -UseBasicParsing
+Invoke-WebRequest https://intercal.jami.studio/api/openapi.json -UseBasicParsing
+Invoke-WebRequest https://intercal.jami.studio/api/v1/freshness?topic_or_entity=MCP%20protocol -UseBasicParsing
 ```
 
-Operator-gated: env listing and domain proof require Vercel project/team access; live smoke checks
-require a deployed URL.
+Current proof from 2026-06-07:
+
+- `vercel whoami` returned `studio-jami`.
+- `vercel project ls` listed project `intercal` with latest production URL
+  `https://intercal.jami.studio`.
+- `vercel project inspect intercal` reported Root Directory `packages/dashboard`, Node.js `24.x`,
+  Framework Preset `Next.js`, and owner `jami-studio`.
+- `vercel inspect https://intercal.jami.studio` reported a Ready production deployment and aliases
+  for the official domain plus existing compatibility URLs.
+
+Operator-gated: environment value listing requires Vercel project/team access and must not print
+secret values. Live smoke checks require a deployed URL.
 
 ## Secret Fan-Out Handoff
 

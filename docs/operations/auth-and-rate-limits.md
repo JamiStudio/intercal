@@ -97,6 +97,10 @@ trusted proxy observed), never the left-most (which on an appending proxy is the
 client-claimed value). A forged left-most `x-forwarded-for` therefore cannot mint a fresh bucket to
 evade the anonymous limit.
 
+This is a launch-host assumption, not a generic proof for every future edge provider. A Cloudflare
+Workers/Pages compute move must re-prove Cloudflare's trusted client-IP header behavior and update
+this runbook before anonymous rate limiting is considered production-ready on that host.
+
 ### Headers
 
 Every `/v1/*` response carries both the IETF draft and `X-`-prefixed aliases:

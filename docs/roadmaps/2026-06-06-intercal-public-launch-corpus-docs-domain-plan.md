@@ -1457,16 +1457,16 @@ Primary areas:
 
 Implementation tasks:
 
-- [ ] Audit whether any code depends on Vercel-specific behavior beyond deployment config.
-- [ ] Confirm Hono/API/MCP portability claims remain true after public pages and docs land.
-- [ ] Confirm Cloudflare R2 storage is live behind the S3 adapter.
-- [ ] Confirm no public page leaks source text against policy.
-- [ ] Confirm no marketing claim exceeds corpus coverage or API/MCP behavior.
-- [ ] Decide whether to keep `intercal.jami.studio`, purchase an Intercal-owned domain, or prepare Cloudflare compute proof as a separate decision record.
+- [x] Audit whether any code depends on Vercel-specific behavior beyond deployment config.
+- [x] Confirm Hono/API/MCP portability claims remain true after public pages and docs land.
+- [!] Confirm Cloudflare R2 storage is live behind the S3 adapter.
+- [x] Confirm no public page leaks source text against policy.
+- [x] Confirm no marketing claim exceeds corpus coverage or API/MCP behavior.
+- [x] Decide whether to keep `intercal.jami.studio`, purchase an Intercal-owned domain, or prepare Cloudflare compute proof as a separate decision record.
 
 Exit criteria:
 
-- [ ] Public launch is complete on the chosen topology, and future host/domain moves are explicit decisions rather than hidden pressure.
+- [~] Public launch is complete on the chosen topology, and future host/domain moves are explicit decisions rather than hidden pressure. Pass 1 documents the current Vercel launch posture and future decisions; live R2 proof remains operator-gated because this shell lacked Cloudflare/R2 tooling and env.
 
 Suggested verification:
 
@@ -1484,6 +1484,34 @@ Pass 1 dispatch note:
   claim checks, and explicit future domain/Cloudflare-compute decisions. Next action: wait for pass
   1, inspect commit stats/body, then dispatch mandatory pass 2 regardless of whether pass 1 is
   clean.
+
+Pass 1 closeout note: release/provider audit keeps launch posture on `intercal.jami.studio` through
+Vercel. `vercel whoami`, `vercel project inspect intercal`, and
+`vercel inspect https://intercal.jami.studio` showed account scope `studio-jami`, project
+`intercal`, Root Directory `packages/dashboard`, Node.js `24.x`, and a Ready production deployment
+aliased to the official domain. Code audit found Vercel-specific behavior in the current mount and
+runtime only: `hono/vercel`, `VERCEL_URL` fallback, Node runtime settings for `pg`, MCP
+`maxDuration`, and REST anonymous rate-limit trust in Vercel-managed client-IP headers. This is
+acceptable for the current Vercel launch and is documented as a future Cloudflare-compute proof
+requirement, not as a current blocker. Hono REST and MCP still share deploy-portable application
+semantics through the Hono app factory, Web `Response` MCP handler, standalone Node MCP server, and
+the shared query layer. Live smokes passed for `/`, `/docs`, `/ai-history`, `/coverage`,
+`/search?query=MCP%20protocol`, `/delta?topic=frontier%20LLMs&since_date=2023-03-01`,
+`/api/openapi.json`, `/api/v1/freshness?topic_or_entity=MCP%20protocol`,
+`/api/v1/evidence?query=MCP%20protocol&limit=3`, and MCP Streamable HTTP initialize at `/api/mcp`.
+Evidence search returned one policy-servable MCP snippet with citation metadata; delta returned a
+cited summary with four citations; public pages and docs continue to state raw source bodies are not
+displayed. Marketing/docs language remains bounded to the reviewed broad AI-history proof slice and
+the implemented V1 REST/MCP query surface. R2 live bucket proof could not run from this shell because
+no `S3_*`, Cloudflare token/account env, AWS env, `wrangler`, or `aws` CLI was present; the exact next
+action is an operator shell proof with `wrangler r2 bucket list` / `wrangler r2 bucket info <bucket>
+--json`, or R2 S3 credentials plus an S3 client. Root `node scripts/dev/verify-mcp.mjs` still cannot
+resolve `@modelcontextprotocol/sdk` from the root script location, matching the existing deployment
+runbook caveat; the HTTP initialize smoke passed and package dependency placement remains a tooling
+gap, not a live MCP blocker. Durable docs now record `intercal.jami.studio` on Vercel as the current
+launch posture, Intercal-owned domain purchase as future work, and Cloudflare compute proof as a
+separate later decision. Pass 1 likely gates as B because it adds a new decision record and
+production-meaningful provider posture docs.
 
 ## Final Verification And Closeout
 

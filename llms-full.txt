@@ -488,7 +488,10 @@ The accepted hosted topology is:
 - Cloudflare R2 behind the S3 storage adapter.
 - Upstash Redis behind queue/cache and rate-limit ports.
 
-Provider swaps should be configuration and adapter changes, not schema rewrites.
+Storage, queue/cache, LLM, embeddings, and database provider swaps should be configuration and
+adapter changes, not schema rewrites. Front-door compute swaps are separate release proofs: the
+current launch uses Vercel-specific route mounts and trusted client-IP header assumptions that must
+be revalidated before moving production traffic to Cloudflare Workers or Pages.
 
 ## Budgets
 

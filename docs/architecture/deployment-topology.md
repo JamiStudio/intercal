@@ -1,11 +1,12 @@
 # Deployment Topology
 
-Intercal depends on **service contracts, not hosts.** Code is the same across every
-environment; only adapter configuration (`.env` / platform env) changes. This is the decided
-**final shape** — free now, scales when required — see
+Intercal depends on **service contracts, not hosts.** Adapter-backed dependencies use the same
+ports across environments; front-door compute still has host adapters and trusted-header behavior
+that must be proven before a provider swap. This is the decided **current launch shape** - free now,
+scales when required - see
 [`../decisions/0002-final-hosting-topology.md`](../decisions/0002-final-hosting-topology.md).
 
-## The final shape
+## Current launch shape
 
 | Layer | Provider | Notes |
 | --- | --- | --- |
@@ -39,6 +40,11 @@ alternative for **other people** — it is not the maintainers' dev flow.
   New hosted environments still follow the same path: connect the GitHub repo to Vercel, set env
   vars (Neon `DATABASE_URL`, R2, Upstash, LLM keys), set the Vercel Root Directory to
   `packages/dashboard`, and attach the target domain.
+- The Vercel-specific code found in the release audit is limited to the current Next.js mount
+  (`hono/vercel`), the dashboard's `VERCEL_URL` same-deployment fallback, route-level Node runtime
+  settings for `pg`, Vercel function duration for MCP, and REST rate-limit trust in Vercel-managed
+  client-IP headers. This is acceptable for the launch host. A Cloudflare Workers/Pages move needs a
+  separate proof/decision before production traffic uses it.
 - The operator deployment runbook is [`../operations/deployment.md`](../operations/deployment.md).
   It ties the Vercel app/MCP/REST path, GitHub Actions pipeline, Cloud Run Job, DNS/TLS,
   migrations, health checks, rollback, self-host, VPS, backup, and restore instructions back to the

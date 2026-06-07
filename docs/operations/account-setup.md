@@ -212,6 +212,12 @@ aws s3 ls s3://<bucket> --endpoint-url <r2-s3-endpoint>
 Operator-gated: bucket list/info needs Cloudflare auth; real upload proof requires AWS CLI plus R2
 S3 credentials.
 
+Current Workstream 9 pass 1 gap (2026-06-07): this shell had no `S3_*`,
+`CLOUDFLARE_API_TOKEN`, `CLOUDFLARE_ACCOUNT_ID`, `AWS_ACCESS_KEY_ID`, or
+`AWS_SECRET_ACCESS_KEY` environment variables, `wrangler` was not installed, and `aws` was not
+installed. The exact next action is to run the proof commands above from an operator shell with
+Cloudflare account access or R2 S3 credentials, without printing credential values.
+
 ## Upstash Queue And Rate-Limit Store
 
 Prerequisites:

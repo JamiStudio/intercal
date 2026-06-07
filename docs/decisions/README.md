@@ -22,3 +22,6 @@ implementation.
 - [`0002-final-hosting-topology.md`](0002-final-hosting-topology.md) — the decided go-live
   shape: Neon (dev branches, no local Docker) · Vercel app · Cloudflare R2 · Upstash ·
   GitHub Actions → Cloud Run for the Python pipeline.
+- [`0003-public-launch-provider-posture.md`](0003-public-launch-provider-posture.md) — the
+  release-audit posture: launch remains `intercal.jami.studio` on Vercel; an Intercal-owned domain
+  and Cloudflare compute proof are explicit future decisions.

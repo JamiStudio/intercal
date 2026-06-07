@@ -2,6 +2,7 @@
 
 Status: **Accepted** — 2026-06-04
 Refines: 0001 (D5/D6/D11/D15) with the concrete, decided go-live shape.
+Further refined by: 0003 (public launch provider posture).
 
 The full intended deployment shape, aimed at from the start. Free now; each layer scales (or
 swaps) without re-architecture because everything sits behind a port or a standard contract.
@@ -20,8 +21,10 @@ swaps) without re-architecture because everything sits behind a port or a standa
 - **No local Docker for maintainers.** `docker/compose.yaml` and the Dockerfiles remain in the
   repo as a self-host path for *other people* and as Cloud Run build artifacts (built in the
   cloud). The maintainers develop directly against Neon.
-- **Going live** needs only: connect repo → Vercel, set env (Neon/R2/Upstash/LLM), attach a
-  domain. Until then we run on `*.vercel.app`.
+- **Going live** is now the Vercel path on `intercal.jami.studio`: connect repo -> Vercel, set env
+  (Neon/R2/Upstash/LLM), attach the domain, and smoke the same-origin UI/REST/OpenAPI/MCP routes.
+  An Intercal-owned apex domain and Cloudflare compute proof are future decisions, not hidden launch
+  blockers; see 0003.
 - **Monetization/donations = a feature flag.** No donation copy or link is surfaced until the
   domain and posture are settled. This is a toggle, never an architectural constraint, and
   never blocks building or testing live.

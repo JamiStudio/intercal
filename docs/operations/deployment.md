@@ -23,6 +23,32 @@ in `docs/operations/secrets.md`.
 | Object storage | Cloudflare R2 through the S3 adapter | `services/shared/.../storage_s3.py` |
 | Backups | Neon branch/PITR plus portable `pg_dump` custom-format archives, optional R2 upload | `docs/operations/backups.md`, `scripts/ops/backup-restore.mjs` |
 
+## Release Audit Posture
+
+Workstream 9 pass 1 keeps the public launch on `https://intercal.jami.studio` through Vercel.
+Cloudflare compute is not current scope. Treat it as a future provider-swap proof that must validate
+the Hono mount, MCP Streamable HTTP behavior, trusted client-IP headers for rate limiting,
+Next.js/static routing, Node/Postgres compatibility, and rollback.
+
+The Vercel-specific behavior currently found in code is acceptable for this launch:
+
+- `packages/dashboard/app/api/[[...route]]/route.ts` uses `hono/vercel` to mount the shared Hono app
+  into the Next.js/Vercel route.
+- `packages/dashboard/lib/client.ts` uses `VERCEL_URL` as a same-deployment fallback when
+  `PUBLIC_API_BASE_URL` is not set.
+- `packages/dashboard/app/api/*` routes force the Node runtime because `pg` needs TCP sockets.
+- `packages/dashboard/app/api/mcp/route.ts` sets the current Vercel function duration for MCP.
+- `packages/api/src/auth/middleware.ts` trusts Vercel-managed client-IP headers for anonymous
+  per-IP rate limits.
+
+Current R2 proof status: the storage adapter is S3-compatible and supports Cloudflare R2 through
+`S3_*` environment variables, but this pass could not prove the live bucket from the shell. No
+`S3_*`, `CLOUDFLARE_API_TOKEN`, or `CLOUDFLARE_ACCOUNT_ID` variables were present, `wrangler` was
+not on `PATH`, and `aws` was not on `PATH`. To verify live R2, provide Cloudflare account access
+with `wrangler r2 bucket list` / `wrangler r2 bucket info <bucket> --json`, or provide R2 S3
+credentials plus an S3 client and run a metadata/list or backup upload proof without printing
+credential values.
+
 ## DNS And TLS
 
 The official Intercal public domain is `https://intercal.jami.studio`. Cloudflare owns DNS for the

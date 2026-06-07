@@ -486,6 +486,11 @@ The first proof consumes the same adapters, provenance rules, and public query p
   Root `pnpm lint` remains blocked by unrelated pre-existing `mcps/Neon` formatting drift plus a
   Biome schema-version warning. Next coordinator action: dispatch mandatory Workstream 5 pass 2 with
   fresh context.
+- 2026-06-06T22:08:00-04:00 — Dispatched mandatory Workstream 5 pass 2 to fresh-context thread
+  `019e9fd4-727d-7680-a1a6-e567e16b3a94`. Active streams: Workstream 5 only. Ownership boundary:
+  dashboard public routes, public knowledge evidence/source-policy correctness, dashboard helpers,
+  related tests, durable docs, active roadmap status, and changelog. Next coordinator action: poll
+  the thread to terminal result, then gate the pass 2 commit using summary-level stat/body.
 
 ## Workstream 1: Corpus Scope And Source Taxonomy
 

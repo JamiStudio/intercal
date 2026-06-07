@@ -528,6 +528,16 @@ The first proof consumes the same adapters, provenance rules, and public query p
   Ownership boundary: final quiet confirmation for citation/source-policy links, public raw-text
   exposure, evidence/unknown states, subscription key handling, and docs/roadmap accuracy. Next
   coordinator action: poll to terminal result and gate as potential class C closeout.
+- 2026-06-06T23:25:00-04:00 — Workstream 5 pass 5 strict quiet confirmation returned quiet.
+  Commit: this closeout commit (`chore(docs): close workstream 5 quiet audit`). Audit confirmed no
+  remaining public outbound source/citation links bypass the shared `http`/`https` citation
+  allowlist, no public route exposes raw/restricted source text or hidden demo data,
+  evidence/unknown/coverage states remain explicit, and subscription API keys remain
+  non-persistent, non-echoed, and routed through SDK methods over generated REST contracts. No code,
+  contract, source lookup semantics, operator mutations, docs/Mintlify, marketing/SEO, or
+  domain-routing work was added. Workstream 5 is quiet from the public knowledge experience
+  closeout boundary; the remaining follow-ups stay contracted source-document metadata lookup,
+  relationship-edge graph controls, audited operator mutations, and deeper accessibility coverage.
 
 ## Workstream 1: Corpus Scope And Source Taxonomy
 
@@ -1006,6 +1016,18 @@ echo, and the documented remaining Workstream 5 gaps remain contracted source-do
 lookup, relationship-edge graph controls, audited operator mutations, and deeper accessibility
 coverage. No contracts, generated artifacts, source lookup semantics, raw source-text exposure,
 operator mutations, docs/Mintlify, marketing/SEO, or domain routing work was added.
+
+Pass 5 quiet-confirmation note: strict citation/source-policy audit found no remaining critical
+public knowledge experience closeout blocker. Dashboard citation chips and `/claim/[id]`
+source-document metadata both use the shared `http`/`https` outbound allowlist; invalid, relative,
+or non-web URLs remain internal source-record state. Public dashboard routes and the shared
+REST/core read layer expose citation metadata, source-document metadata, policy-gated snippets, or
+explicit unknown/coverage states, not raw/restricted source bodies or hidden demo data. Subscription
+API keys remain password-only form inputs, are passed only to SDK calls over generated REST
+contracts, and are not persisted or echoed. The remaining Workstream 5 follow-ups are non-closeout:
+contracted source-document metadata lookup, relationship-edge graph controls, audited operator
+mutations, and deeper accessibility coverage. No code, generated contracts, source lookup
+semantics, operator mutations, docs/Mintlify, marketing/SEO, or domain routing work was added.
 
 Suggested verification:
 

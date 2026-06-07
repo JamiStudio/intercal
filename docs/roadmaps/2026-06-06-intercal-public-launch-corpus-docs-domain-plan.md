@@ -456,6 +456,12 @@ The first proof consumes the same adapters, provenance rules, and public query p
   proof surfaces, broad source rows/scripts/seeds, operations docs, related tests, Workstream 4
   roadmap status, and changelog. Next coordinator action: poll in short intervals, record result,
   then gate the pass 10 commit.
+- 2026-06-06T18:48:00-04:00 — Workstream 4 pass 10 returned complete. Commit:
+  `af2e917cbaac055829faf608e38780fea3f81ed8` (`fix(dev): cover first-proof entity as-of verifier`),
+  pushed to `origin/main`. Gate result: 4 files and 35 LOC passes the numeric gate, but contents are
+  meaningful verifier coverage alignment for ChatGPT, Claude, Gemini, and Llama point-in-time
+  entity reads. Seeded, live-first, and live-full verifier modes still pass. Next coordinator
+  action: dispatch Workstream 4 pass 11 strict quiet audit.
 
 ## Workstream 1: Corpus Scope And Source Taxonomy
 

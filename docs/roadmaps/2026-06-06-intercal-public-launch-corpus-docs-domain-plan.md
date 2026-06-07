@@ -1513,6 +1513,16 @@ launch posture, Intercal-owned domain purchase as future work, and Cloudflare co
 separate later decision. Pass 1 likely gates as B because it adds a new decision record and
 production-meaningful provider posture docs.
 
+Pass 2 dispatch note:
+
+- 2026-06-07T01:15:00-04:00 — Coordinator gate confirmed Workstream 9 pass 1 as B:
+  12 files changed with 156 insertions and 16 deletions, including a new decision record, public
+  docs export updates, and production-meaningful release/provider posture documentation. Dispatched
+  mandatory Workstream 9 pass 2 to fresh-context thread `019ea081-bd2d-78f3-b0ac-b695f26274d0`.
+  Active stream: Workstream 9 only. Workstreams 1 through 8 are closed. Next action: wait for pass
+  2, inspect commit stats/body, and close Workstream 9 only if the result is C-class quiet
+  tests/docs/cleanup.
+
 ## Final Verification And Closeout
 
 - `pnpm format:check`

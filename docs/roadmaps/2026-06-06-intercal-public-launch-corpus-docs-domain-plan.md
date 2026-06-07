@@ -548,6 +548,15 @@ The first proof consumes the same adapters, provenance rules, and public query p
   `llms.txt`/`llms-full.txt`, copy/export strategy, generated OpenAPI placement, SDK/MCP examples,
   docs drift checks, `docs/README.md`, active roadmap, and changelog. Next coordinator action: poll
   to terminal result, then dispatch mandatory Workstream 6 pass 2.
+- 2026-06-07T00:05:00-04:00 — Workstream 6 pass 1 returned complete via worker
+  `019ea009-058a-70e1-8884-82ac4483befe`. Commit:
+  `ee16e3d docs: add public docs exports`, pushed to `origin/main`. Summary gate: 30 files changed,
+  1,940 insertions, 14 deletions, so this is not closeout-eligible. The pass added source-owned
+  public docs, Mintlify navigation, `/docs` rendering, `llms.txt`, `llms-full.txt`, generated
+  dashboard docs snapshot, and `pnpm docs:check`. Worker verification passed docs check,
+  whitespace checks, format check, lint, dashboard typecheck/test/build, contracts check, and
+  changed-file secret scan. Next coordinator action: dispatch mandatory Workstream 6 pass 2 with
+  fresh context.
 
 ## Workstream 1: Corpus Scope And Source Taxonomy
 

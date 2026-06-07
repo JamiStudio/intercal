@@ -56,7 +56,7 @@ flowchart LR
   subgraph Read side TS
     CORE[core query layer] --> API[REST api]
     CORE --> MCP[MCP server]
-    API --> SDK --> DASH[dashboard]
+  API --> SDK --> DASH[dashboard]
   end
   ENT --> CORE
   CLM --> CORE
@@ -67,3 +67,6 @@ flowchart LR
 Writes flow Python → Postgres through repositories. Reads flow Postgres → `core` → API/MCP →
 SDK → dashboard. The contract (`@intercal/shared`) and the schema (`db/`) are the two
 load-bearing boundaries; everything else is swappable behind a port.
+
+The dashboard's public route/data ownership is documented in
+[`public-knowledge-experience.md`](public-knowledge-experience.md).

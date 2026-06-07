@@ -1,8 +1,12 @@
 import { IntercalApiError } from '@intercal/sdk';
 import Link from 'next/link';
+import { EmptyState, EvidenceLink, PageHeader, Panel } from '../../../components/ui';
 import { apiClient } from '../../../lib/client';
+import { formatDate, formatPercent } from '../../../lib/format';
 
 type EntityResponse = Awaited<ReturnType<ReturnType<typeof apiClient>['getEntity']>>;
+
+export const dynamic = 'force-dynamic';
 
 export default async function EntityPage({ params }: { params: Promise<{ name: string }> }) {
   const { name } = await params;
@@ -22,9 +26,9 @@ export default async function EntityPage({ params }: { params: Promise<{ name: s
   }
 
   return (
-    <main className="space-y-6">
+    <div className="space-y-6">
       <Link className="text-sm underline" href="/">
-        ← Home
+        Home
       </Link>
 
       {errorMessage ? (
@@ -34,44 +38,91 @@ export default async function EntityPage({ params }: { params: Promise<{ name: s
         </div>
       ) : data ? (
         <article className="space-y-6">
-          <header className="space-y-1">
-            <p className="text-xs uppercase tracking-wide text-neutral-500">{data.entity.type}</p>
-            <h1 className="text-3xl font-semibold">{data.entity.displayName}</h1>
+          <PageHeader eyebrow={data.entity.type} title={data.entity.displayName}>
             {data.entity.aliases?.length ? (
               <p className="text-sm text-neutral-500">aka {data.entity.aliases.join(', ')}</p>
             ) : null}
-          </header>
+            <p>
+              {data.facts?.length ?? 0} fact{(data.facts?.length ?? 0) === 1 ? '' : 's'} and{' '}
+              {data.relationships?.length ?? 0} relationship
+              {(data.relationships?.length ?? 0) === 1 ? '' : 's'} returned from the shared query
+              layer.
+            </p>
+          </PageHeader>
 
-          <section>
-            <h2 className="mb-2 text-lg font-medium">Facts</h2>
+          <Panel title="Facts">
             {data.facts?.length ? (
               <ul className="space-y-2">
                 {data.facts.map((f) => (
                   <li
                     key={f.id}
-                    className="rounded-md border border-neutral-200 p-3 dark:border-neutral-800"
+                    className="space-y-2 rounded-md border border-neutral-200 p-3 dark:border-neutral-800"
                   >
-                    <p>{f.normalizedText}</p>
+                    <div className="flex flex-wrap items-start justify-between gap-3">
+                      <p>{f.normalizedText}</p>
+                      <Link className="text-sm underline" href={`/claim/${f.id}`}>
+                        Evidence
+                      </Link>
+                    </div>
+                    <div className="flex flex-wrap gap-2">
+                      {f.evidence.length ? (
+                        f.evidence.map((citation) => (
+                          <EvidenceLink key={citation.sourceDocumentId} {...citation} />
+                        ))
+                      ) : (
+                        <span className="text-sm text-neutral-500">Evidence path unavailable.</span>
+                      )}
+                    </div>
                     <p className="text-xs text-neutral-500">
-                      confidence {Math.round(f.confidence.score * 100)}% · {f.evidence.length}{' '}
-                      source(s) · recorded {new Date(f.recordedAt).toLocaleDateString()}
+                      confidence {formatPercent(f.confidence.score)} by {f.confidence.method} ·
+                      recorded {formatDate(f.recordedAt)} · contradiction {f.contradiction}
                     </p>
                   </li>
                 ))}
               </ul>
             ) : (
-              <p className="text-sm text-neutral-500">No recorded facts yet (explicit unknown).</p>
+              <EmptyState title="No recorded facts">
+                <p>This is an explicit unknown state for the selected entity.</p>
+              </EmptyState>
             )}
-          </section>
+          </Panel>
 
-          <section className="text-sm text-neutral-500">
-            {data.relationships?.length ?? 0} relationship(s) ·{' '}
-            {data.freshness.lastUpdated
-              ? `updated ${data.freshness.staleness ?? ''} ago`
-              : 'freshness unknown'}
-          </section>
+          <div className="grid gap-4 lg:grid-cols-2">
+            <Panel title="Freshness">
+              <dl className="grid gap-2 text-sm">
+                <div>
+                  <dt className="font-medium">Last updated</dt>
+                  <dd className="text-neutral-600 dark:text-neutral-400">
+                    {formatDate(data.freshness.lastUpdated)}
+                  </dd>
+                </div>
+                <div>
+                  <dt className="font-medium">State</dt>
+                  <dd className="text-neutral-600 dark:text-neutral-400">
+                    {data.freshness.staleness ?? 'unknown'}
+                  </dd>
+                </div>
+              </dl>
+            </Panel>
+            <Panel title="Relationships">
+              {data.relationships?.length ? (
+                <ul className="space-y-2 text-sm">
+                  {data.relationships.map((relationship) => (
+                    <li
+                      key={relationship.id}
+                      className="rounded border border-neutral-200 p-2 dark:border-neutral-800"
+                    >
+                      {relationship.fromEntityId} {relationship.type} {relationship.toEntityId}
+                    </li>
+                  ))}
+                </ul>
+              ) : (
+                <EmptyState title="No relationships returned" />
+              )}
+            </Panel>
+          </div>
         </article>
       ) : null}
-    </main>
+    </div>
   );
 }

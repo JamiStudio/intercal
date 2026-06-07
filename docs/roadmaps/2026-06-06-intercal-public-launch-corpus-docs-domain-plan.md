@@ -879,11 +879,11 @@ Goal: Replace the thin dashboard shell with the full read-only public product su
 Depends on:
 
 - [x] Workstream 4 quality gates.
-- [ ] Plan 06 route/workflow ownership.
+- [~] Plan 06 route/workflow ownership.
 
 Enables:
 
-- [ ] Workstream 6 docs examples, Workstream 7 Intercal marketing/SEO, and Workstream 8 domain verification.
+- [~] Workstream 6 docs examples, Workstream 7 Intercal marketing/SEO, and Workstream 8 domain verification.
 
 Repo guidance:
 
@@ -898,17 +898,33 @@ Primary areas:
 
 Implementation tasks:
 
-- [ ] Build Intercal landing at `/` on `intercal.jami.studio`.
-- [ ] Build entity, topic, claim, evidence, source, freshness, and coverage pages.
-- [ ] Build graph and timeline explorer with point-in-time controls, confidence, contradiction, and source-origin overlays.
-- [ ] Build briefing/search/comparison pages around `get_delta`, `verify_claim`, `search_evidence`, and `get_freshness`.
-- [ ] Build subscription and feedback/reporting flows that reuse audited review records.
-- [ ] Build operator/review surfaces behind auth for source health, ingestion runs, feedback, audit events, usage, budget, and coverage.
-- [ ] Add mobile, accessibility, empty, stale, loading, and source-policy states.
+- [x] Build Intercal landing at `/` on `intercal.jami.studio`.
+- [~] Build entity, topic, claim, evidence, source, freshness, and coverage pages. Pass 1 adds
+  `/entity`, `/entity/[name]`, `/topic`, `/topic/[name]`, `/claim/[id]`, `/search`, `/freshness`,
+  and `/coverage`; direct source/evidence detail pages still need a contracted source-document
+  lookup path.
+- [~] Build graph and timeline explorer with point-in-time controls, confidence, contradiction, and source-origin overlays. Pass 1 adds a topic timeline from `get_delta`; richer graph controls and overlays remain.
+- [x] Build briefing/search/comparison pages around `get_delta`, `verify_claim`, `search_evidence`, and `get_freshness`.
+- [~] Build subscription and feedback/reporting flows that reuse audited review records. Pass 1 adds feedback submission to audited review records; authenticated subscription management UI remains.
+- [~] Build operator/review surfaces behind auth for source health, ingestion runs, feedback, audit events, usage, budget, and coverage. Pass 1 adds a locked read-only operator console; review transitions/source-policy actions remain.
+- [~] Add mobile, accessibility, empty, stale, loading, and source-policy states. Pass 1 includes responsive layouts, explicit empty/stale/unknown/source-policy states, and browser smoke; deeper accessibility coverage remains.
 
 Exit criteria:
 
-- [ ] `intercal.jami.studio` is useful as a public human experience, not only an API shell.
+- [~] `intercal.jami.studio` is useful as a public human experience, not only an API shell.
+  Pass 1 replaces the thin dashboard with real public query routes. Workstream 5 stays open for
+  direct source/evidence detail lookup, richer graph controls, subscription management, and audited
+  operator action workflows.
+
+Pass 1 closeout note: `packages/dashboard` now has a read-only public application frame and routes
+for entity lookup, claim evidence sources, topic exploration, evidence search, delta briefings,
+claim verification, freshness, coverage, feedback/reporting, and a locked read-only operator
+console. All public assertions are served from SDK/core query outputs or explicit unknown/gap
+states; the dashboard does not hand-edit generated contracts or expose raw source bodies. Durable
+route/data ownership is documented in `docs/architecture/public-knowledge-experience.md`.
+Remaining Workstream 5 work is the deeper graph/timeline explorer, direct source/evidence detail
+routes once the contract supports lookup by source-document id, subscription management UI, and
+audited operator review/source-policy actions.
 
 Suggested verification:
 

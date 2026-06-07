@@ -1535,6 +1535,18 @@ and MCP initialize on `https://intercal.jami.studio`. No code, generated contrac
 Cloudflare Workers/Pages compute, domain purchase, DNS change, or unrelated Jami Studio routing was
 changed. Gate result: C - quiet docs/audit cleanup.
 
+Pass 3 dispatch note:
+
+- 2026-06-07T01:30:00-04:00 — Coordinator found non-destructive R2 evidence after pass 2 using a
+  one-off Wrangler path: `pnpm dlx wrangler whoami` authenticated to Cloudflare account
+  `jami-studio` (`c294df364db8742bc02db57c046043ef`), `pnpm dlx wrangler r2 bucket list` returned
+  bucket `intercal` created 2026-06-05T01:59:17.083Z, and
+  `pnpm dlx wrangler r2 bucket info intercal` returned location `ENAM`, storage class `Standard`,
+  object count `78`, and bucket size `90.3 kB`. Because this supersedes the pass 2
+  operator-gated wording, Workstream 9 is not closed yet. Dispatched Workstream 9 pass 3 to
+  fresh-context thread `019ea08b-3284-7451-944d-71fd5f175910` to update the docs/source exports and
+  recheck the release/provider posture. Active stream: Workstream 9 only.
+
 ## Final Verification And Closeout
 
 - `pnpm format:check`

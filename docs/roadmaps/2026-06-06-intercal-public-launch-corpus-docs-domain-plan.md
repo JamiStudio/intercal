@@ -965,6 +965,14 @@ direct source-document metadata lookup, relationship-edge graph controls beyond 
 overlays, audited operator review/source-policy mutations, and deeper accessibility/browser
 coverage.
 
+Pass 3 quiet-audit note: strict route/source-policy audit found no broad product-surface gap, but
+closed two small public-readiness issues. Dashboard citation chips now render outbound links only for
+`http` and `https` citation URLs, falling back to source-document id/source-record state for invalid
+or non-web URLs, and topic timeline claims now show an explicit evidence-unavailable state when the
+query layer returns a claim without citations. No contracts, generated artifacts, source lookup
+semantics, subscription secret handling, operator mutations, docs/Mintlify, marketing/SEO, or domain
+routing work was added.
+
 Suggested verification:
 
 - `pnpm --filter @intercal/dashboard test`

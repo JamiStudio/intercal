@@ -42,6 +42,8 @@ Public pages may display:
 
 Public pages must not display raw source bodies. Source-policy enforcement remains in ingestion and
 `@intercal/core`; dashboard code should consume the served shape rather than reimplementing policy.
+Dashboard citation chips render only `http` and `https` URLs as outbound links; invalid or
+non-web citation URLs fall back to the source-document id and source-record route.
 
 ## Operator Boundary
 

@@ -1,6 +1,6 @@
 import Link from 'next/link';
 import type { ReactNode } from 'react';
-import { compactId } from '../lib/format';
+import { citationLabel, safeCitationHref } from '../lib/citations';
 
 export function PageHeader({
   eyebrow,
@@ -62,15 +62,6 @@ export function ErrorState({ title, message }: { title: string; message: string 
   );
 }
 
-function citationLabel(url: string | undefined, sourceDocumentId: string): string {
-  if (!url) return compactId(sourceDocumentId);
-  try {
-    return new URL(url).hostname;
-  } catch {
-    return compactId(sourceDocumentId);
-  }
-}
-
 export function EvidenceLink({
   sourceDocumentId,
   url,
@@ -83,10 +74,11 @@ export function EvidenceLink({
   showSourceRecord?: boolean;
 }) {
   const label = citationLabel(url, sourceDocumentId);
+  const href = safeCitationHref(url);
   return (
     <span className="inline-flex flex-wrap items-center gap-1 rounded border border-neutral-200 px-2 py-1 text-xs text-neutral-600 dark:border-neutral-800 dark:text-neutral-300">
-      {url ? (
-        <Link href={url} className="underline" target="_blank" rel="noreferrer">
+      {href ? (
+        <Link href={href} className="underline" target="_blank" rel="noreferrer">
           {label}
         </Link>
       ) : (

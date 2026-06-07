@@ -75,9 +75,15 @@ export default async function TopicPage({ params }: { params: Promise<{ name: st
                     <span className="text-neutral-500">{formatDate(claim.recordedAt)}</span>
                   </div>
                   <div className="mt-2 flex flex-wrap gap-2">
-                    {claim.evidence.map((citation) => (
-                      <EvidenceLink key={citation.sourceDocumentId} {...citation} />
-                    ))}
+                    {claim.evidence.length ? (
+                      claim.evidence.map((citation) => (
+                        <EvidenceLink key={citation.sourceDocumentId} {...citation} />
+                      ))
+                    ) : (
+                      <span className="text-xs text-neutral-500">
+                        Evidence path unavailable for this returned claim.
+                      </span>
+                    )}
                   </div>
                 </li>
               ))}

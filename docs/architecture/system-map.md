@@ -18,7 +18,7 @@ doc explains boundaries.
 | --- | --- |
 | `@intercal/shared` | Contracts. **TypeSpec is the single source**; OpenAPI 3.1 + JSON Schema + TS types are generated. Exposes `getOpenApiDocument()`, `getJsonSchema()`, and `V1_TOOLS`. |
 | `@intercal/core` | Shared DB access (Kysely, read-side) + the **query-service layer** (`getEntity`, `getSources`, `getFreshness`, `searchEvidence`, `getDelta`, `verifyClaim`). One set of query semantics. |
-| `@intercal/api` | Hono REST API. Validates query params against the generated JSON Schema (ajv) and serves `/openapi.json`. Deploy-agnostic (Node/Vercel/Cloudflare/Bun). |
+| `@intercal/api` | Hono REST API app factory. Validates query params against the generated JSON Schema (ajv) and serves `/openapi.json`. REST semantics are portable by contract; the current public mount remains the Vercel/Next.js route until another host proves mount, runtime, routing, and trusted-header behavior. |
 | `@intercal/mcp-server` | MCP server (official SDK). Streamable HTTP (`http.ts`) primary, stdio (`stdio.ts`) for local. Tool input schemas **are** the generated JSON Schemas. |
 | `@intercal/sdk` | Typed REST client; types come from the contract, no separate semantics. |
 | `@intercal/dashboard` | Next.js read-only knowledge experience; consumes the SDK server-side. |

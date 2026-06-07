@@ -1620,6 +1620,16 @@ Pass 6 dispatch note:
   evidence; if it finds a real issue, it should fix narrowly, verify, commit, and push. Active stream:
   Workstream 9 only.
 
+Pass 6 closeout note: strict quiet-confirmation audit found one remaining durable architecture
+summary overclaim in `docs/architecture/system-map.md`: the `@intercal/api` package summary still
+called the REST API deploy-agnostic across Node/Vercel/Cloudflare/Bun. The system map now matches the
+provider-boundary and decision wording: REST semantics are portable by contract, while the current
+public front-door mount remains the proven Vercel/Next.js route until another host proves mount,
+runtime, routing, and trusted-header behavior. Provider-boundaries, foundation-stack decision
+wording, public docs source/exports, pass 5 changelog, and R2 wording otherwise remained aligned. No
+code behavior, generated contracts, Cloudflare Workers/Pages compute, domain purchase, DNS change,
+or fresh R2 S3-adapter object IO was added.
+
 ## Final Verification And Closeout
 
 - `pnpm format:check`

@@ -1361,6 +1361,17 @@ Suggested verification:
 - `Invoke-WebRequest https://intercal.jami.studio/api/openapi.json -UseBasicParsing`
 - `node scripts/dev/verify-mcp.mjs https://intercal.jami.studio/api/mcp`
 
+Pass 1 dispatch note:
+
+- 2026-06-07T00:36:00-04:00 — Dispatched Workstream 8 pass 1 to fresh-context thread
+  `019ea05e-b300-7052-b922-4e26eb0f8cb6`. Active stream: Workstream 8 only.
+  Workstreams 1 through 7 are closed; Workstream 9 remains out of scope except dependency notes.
+  Ownership boundary: verify Vercel project/domain/root settings, Cloudflare DNS, TLS, and live
+  official-domain REST/MCP/docs smoke checks before updating `docs/operations/deployment.md`,
+  `docs/operations/account-setup.md`, the roadmap, and `.changes/` as needed. Next action:
+  wait for the pass 1 result, inspect commit stats/body, then dispatch the mandatory pass 2 from
+  another context regardless of whether pass 1 is clean.
+
 ## Workstream 9: Release Audit And Provider Posture
 
 Goal: Confirm the public launch stack is coherent, portable, and not blocked by avoidable host decisions.

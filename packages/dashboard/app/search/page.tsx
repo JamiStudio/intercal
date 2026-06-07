@@ -5,6 +5,7 @@ import {
   Field,
   PageHeader,
   Panel,
+  SourcePolicyNote,
   SubmitButton,
 } from '../../components/ui';
 import { apiClient } from '../../lib/client';
@@ -44,6 +45,8 @@ export default async function SearchPage({
           Restricted source bodies are not exposed or searched as body text.
         </p>
       </PageHeader>
+
+      <SourcePolicyNote />
 
       <Panel>
         <form className="grid gap-3 lg:grid-cols-[1fr_12rem_12rem_8rem_auto] lg:items-end">

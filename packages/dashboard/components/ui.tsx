@@ -1,5 +1,6 @@
 import Link from 'next/link';
 import type { ReactNode } from 'react';
+import { compactId } from '../lib/format';
 
 export function PageHeader({
   eyebrow,
@@ -61,16 +62,27 @@ export function ErrorState({ title, message }: { title: string; message: string 
   );
 }
 
+function citationLabel(url: string | undefined, sourceDocumentId: string): string {
+  if (!url) return compactId(sourceDocumentId);
+  try {
+    return new URL(url).hostname;
+  } catch {
+    return compactId(sourceDocumentId);
+  }
+}
+
 export function EvidenceLink({
   sourceDocumentId,
   url,
   publishedAt,
+  showSourceRecord = true,
 }: {
   sourceDocumentId: string;
   url?: string;
   publishedAt?: string;
+  showSourceRecord?: boolean;
 }) {
-  const label = url ? new URL(url).hostname : sourceDocumentId.slice(0, 8);
+  const label = citationLabel(url, sourceDocumentId);
   return (
     <span className="inline-flex flex-wrap items-center gap-1 rounded border border-neutral-200 px-2 py-1 text-xs text-neutral-600 dark:border-neutral-800 dark:text-neutral-300">
       {url ? (
@@ -83,7 +95,25 @@ export function EvidenceLink({
       <span className="text-neutral-400">
         {publishedAt ? publishedAt.slice(0, 10) : 'date unknown'}
       </span>
+      {showSourceRecord ? (
+        <Link href={`/source/${encodeURIComponent(sourceDocumentId)}`} className="underline">
+          source record
+        </Link>
+      ) : null}
     </span>
+  );
+}
+
+export function SourcePolicyNote({ children }: { children?: ReactNode }) {
+  return (
+    <div className="rounded-md border border-neutral-200 bg-neutral-50 p-3 text-sm text-neutral-600 dark:border-neutral-800 dark:bg-neutral-900 dark:text-neutral-300">
+      {children ?? (
+        <p>
+          Public evidence displays citation metadata and policy-allowed derived snippets only. Raw
+          source bodies stay outside the dashboard.
+        </p>
+      )}
+    </div>
   );
 }
 

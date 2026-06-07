@@ -36,6 +36,10 @@ export type VerifyClaimParams = Query<'verifyClaim'>;
 export type SourcesParams = Query<'getSources'>;
 export type FreshnessParams = Query<'getFreshness'>;
 export type FeedbackRequest = Schemas['FeedbackRequest'];
+export type CreateSubscriptionRequest = Schemas['CreateSubscriptionRequest'];
+export type PollSubscriptionRequest = Schemas['PollSubscriptionRequest'];
+export type DeleteSubscriptionRequest = Schemas['DeleteSubscriptionRequest'];
+export type DispatchSubscriptionRequest = Schemas['DispatchSubscriptionRequest'];
 
 // Public response types — aliases over the generated contract.
 export type DeltaResponse = Ok<'getDelta'>;
@@ -45,6 +49,10 @@ export type ClaimVerificationResponse = Ok<'verifyClaim'>;
 export type SourcesResponse = Ok<'getSources'>;
 export type FreshnessReport = Ok<'getFreshness'>;
 export type FeedbackResponse = Ok<'submitFeedback'>;
+export type SubscriptionsResponse = Ok<'listSubscriptions'>;
+export type SubscriptionResponse = Ok<'createSubscription'>;
+export type SubscriptionNotificationsResponse = Ok<'pollSubscriptionNotifications'>;
+export type DispatchSubscriptionResponse = Ok<'dispatchSubscriptionNotifications'>;
 
 /** The REST error taxonomy, as served in the `ApiError.code` field. */
 export type IntercalErrorCode =
@@ -127,8 +135,8 @@ export class IntercalRateLimitedError extends IntercalApiError {
 }
 
 /**
- * 501 — the endpoint exists in the contract but its body is deferred to a later workstream
- * (currently `getDelta` and `verifyClaim`). This is an honest seam, not a bug.
+ * 501 — the endpoint exists in the contract but its body is deferred to a later workstream. This is
+ * an honest seam, not a bug.
  */
 export class IntercalNotImplementedError extends IntercalApiError {
   override readonly code = 'not_implemented';
@@ -262,6 +270,43 @@ export class IntercalClient {
   /** Submit bounded feedback for operator review. Does not mutate canonical graph state. */
   submitFeedback(body: FeedbackRequest, init?: RequestInit): Promise<FeedbackResponse> {
     return this.post<FeedbackResponse>('/v1/feedback', body, init);
+  }
+
+  /** List active subscriptions owned by the authenticated API key. */
+  listSubscriptions(init?: RequestInit): Promise<SubscriptionsResponse> {
+    return this.get<SubscriptionsResponse>('/v1/subscriptions', {}, init);
+  }
+
+  /** Create a polling or webhook subscription for an authenticated API key. */
+  createSubscription(
+    body: CreateSubscriptionRequest,
+    init?: RequestInit,
+  ): Promise<SubscriptionResponse> {
+    return this.post<SubscriptionResponse>('/v1/subscriptions', body, init);
+  }
+
+  /** Poll pending notifications for a polling subscription owned by the authenticated API key. */
+  pollSubscriptionNotifications(
+    body: PollSubscriptionRequest,
+    init?: RequestInit,
+  ): Promise<SubscriptionNotificationsResponse> {
+    return this.post<SubscriptionNotificationsResponse>('/v1/subscriptions/poll', body, init);
+  }
+
+  /** Enqueue bounded notifications for subscriptions owned by the authenticated API key. */
+  dispatchSubscriptionNotifications(
+    body: DispatchSubscriptionRequest,
+    init?: RequestInit,
+  ): Promise<DispatchSubscriptionResponse> {
+    return this.post<DispatchSubscriptionResponse>('/v1/subscriptions/dispatch', body, init);
+  }
+
+  /** Deactivate a subscription owned by the authenticated API key. */
+  deleteSubscription(
+    body: DeleteSubscriptionRequest,
+    init?: RequestInit,
+  ): Promise<SubscriptionResponse> {
+    return this.post<SubscriptionResponse>('/v1/subscriptions/delete', body, init);
   }
 
   // --- internals -----------------------------------------------------------

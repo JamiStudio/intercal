@@ -14,6 +14,16 @@ export default function HomePage() {
       body: 'Inspect a topic timeline with freshness and evidence.',
     },
     {
+      title: 'Graph timeline',
+      href: '/graph',
+      body: 'View cited claims, entities, confidence, contradictions, and source origins.',
+    },
+    {
+      title: 'Compare topics',
+      href: '/compare',
+      body: 'Compare two topics by cited change volume, freshness, and coverage.',
+    },
+    {
       title: 'Delta briefing',
       href: '/delta',
       body: 'Ask what changed about a topic after a cutoff date.',
@@ -32,6 +42,11 @@ export default function HomePage() {
       title: 'Coverage',
       href: '/coverage',
       body: 'Review the public corpus-quality gate snapshot.',
+    },
+    {
+      title: 'Subscriptions',
+      href: '/subscriptions',
+      body: 'Manage authenticated change notifications without mutating graph state.',
     },
     {
       title: 'Operator',

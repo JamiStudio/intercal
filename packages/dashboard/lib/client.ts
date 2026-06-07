@@ -11,6 +11,6 @@ function resolveBaseUrl(): string {
   return 'http://localhost:3000/api';
 }
 
-export function apiClient(): IntercalClient {
-  return new IntercalClient({ baseUrl: resolveBaseUrl() });
+export function apiClient(options: { apiKey?: string } = {}): IntercalClient {
+  return new IntercalClient({ baseUrl: resolveBaseUrl(), apiKey: options.apiKey });
 }

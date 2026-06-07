@@ -9,11 +9,14 @@ export const metadata = {
 
 const nav = [
   ['Topics', '/topic'],
+  ['Graph', '/graph'],
   ['Search', '/search'],
+  ['Compare', '/compare'],
   ['Delta', '/delta'],
   ['Verify', '/verify'],
   ['Freshness', '/freshness'],
   ['Coverage', '/coverage'],
+  ['Subscriptions', '/subscriptions'],
   ['Feedback', '/feedback'],
   ['Operator', '/operator'],
 ] as const;

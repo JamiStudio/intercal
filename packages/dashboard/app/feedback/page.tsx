@@ -19,6 +19,7 @@ async function submitFeedbackAction(formData: FormData) {
   const concernType = String(formData.get('concernType') ?? '');
   const summary = String(formData.get('summary') ?? '').trim();
   const details = String(formData.get('details') ?? '').trim();
+  let destination: string;
 
   try {
     const response = await apiClient().submitFeedback({
@@ -35,11 +36,12 @@ async function submitFeedbackAction(formData: FormData) {
       summary,
       ...(details ? { details } : {}),
     });
-    redirect(`/feedback?submitted=${encodeURIComponent(response.review.id)}`);
+    destination = `/feedback?submitted=${encodeURIComponent(response.review.id)}`;
   } catch (e) {
     const message = e instanceof Error ? e.message : 'Unknown error';
-    redirect(`/feedback?error=${encodeURIComponent(message)}`);
+    destination = `/feedback?error=${encodeURIComponent(message)}`;
   }
+  redirect(destination);
 }
 
 export default async function FeedbackPage({

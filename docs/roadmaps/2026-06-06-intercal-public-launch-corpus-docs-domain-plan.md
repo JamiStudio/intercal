@@ -914,19 +914,20 @@ Implementation tasks:
 - [x] Build Intercal landing at `/` on `intercal.jami.studio`.
 - [~] Build entity, topic, claim, evidence, source, freshness, and coverage pages. Pass 1 adds
   `/entity`, `/entity/[name]`, `/topic`, `/topic/[name]`, `/claim/[id]`, `/search`, `/freshness`,
-  and `/coverage`; direct source/evidence detail pages still need a contracted source-document
-  lookup path.
-- [~] Build graph and timeline explorer with point-in-time controls, confidence, contradiction, and source-origin overlays. Pass 1 adds a topic timeline from `get_delta`; richer graph controls and overlays remain.
+  and `/coverage`; pass 2 adds `/source/[id]` as an explicit source-record state without raw body
+  exposure. Direct source/evidence metadata lookup still needs a contracted source-document lookup
+  path.
+- [~] Build graph and timeline explorer with point-in-time controls, confidence, contradiction, and source-origin overlays. Pass 1 adds a topic timeline from `get_delta`; pass 2 adds `/graph` with delta-derived claim/entity/source-origin overlays. Relationship-edge graph controls remain.
 - [x] Build briefing/search/comparison pages around `get_delta`, `verify_claim`, `search_evidence`, and `get_freshness`.
-- [~] Build subscription and feedback/reporting flows that reuse audited review records. Pass 1 adds feedback submission to audited review records; authenticated subscription management UI remains.
+- [x] Build subscription and feedback/reporting flows that reuse audited review records. Pass 1 adds feedback submission to audited review records; pass 2 adds authenticated subscription create/poll/delete UI using the generated REST contract through the SDK.
 - [~] Build operator/review surfaces behind auth for source health, ingestion runs, feedback, audit events, usage, budget, and coverage. Pass 1 adds a locked read-only operator console; review transitions/source-policy actions remain.
-- [~] Add mobile, accessibility, empty, stale, loading, and source-policy states. Pass 1 includes responsive layouts, explicit empty/stale/unknown/source-policy states, and browser smoke; deeper accessibility coverage remains.
+- [~] Add mobile, accessibility, empty, stale, loading, and source-policy states. Pass 1 includes responsive layouts, explicit empty/stale/unknown/source-policy states, and browser smoke; pass 2 adds shared source-policy notes, invalid-URL-safe citation rendering, and honest source-record coverage states. Deeper accessibility coverage remains.
 
 Exit criteria:
 
 - [~] `intercal.jami.studio` is useful as a public human experience, not only an API shell.
   Pass 1 replaces the thin dashboard with real public query routes. Workstream 5 stays open for
-  direct source/evidence detail lookup, richer graph controls, subscription management, and audited
+  contracted direct source/evidence lookup, richer relationship graph controls, and audited
   operator action workflows.
 
 Pass 1 closeout note: `packages/dashboard` now has a read-only public application frame and routes
@@ -938,6 +939,17 @@ route/data ownership is documented in `docs/architecture/public-knowledge-experi
 Remaining Workstream 5 work is the deeper graph/timeline explorer, direct source/evidence detail
 routes once the contract supports lookup by source-document id, subscription management UI, and
 audited operator review/source-policy actions.
+
+Pass 2 closeout note: the public knowledge experience now includes `/graph` for cited
+delta-derived timeline overlays, `/compare` for side-by-side topic change/freshness comparison,
+`/source/[id]` for an explicit source-record/source-policy state, and `/subscriptions` for
+authenticated subscription create/poll/delete actions through typed SDK methods over the generated
+REST contract. Citation rendering now links source records without exposing source bodies, handles
+invalid citation URLs without crashing, and the feedback/subscription server actions no longer catch
+Next redirect exceptions as false failures. Workstream 5 still has open follow-up for a contracted
+direct source-document metadata lookup, relationship-edge graph controls beyond delta-derived
+overlays, audited operator review/source-policy mutations, and deeper accessibility/browser
+coverage.
 
 Suggested verification:
 

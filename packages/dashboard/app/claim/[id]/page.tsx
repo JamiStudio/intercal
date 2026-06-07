@@ -5,6 +5,7 @@ import {
   Field,
   PageHeader,
   Panel,
+  SourcePolicyNote,
   SubmitButton,
 } from '../../../components/ui';
 import { apiClient } from '../../../lib/client';
@@ -37,6 +38,13 @@ export default async function ClaimPage({ params }: { params: Promise<{ id: stri
 
       {error ? <ErrorState title="Claim evidence unavailable" message={error} /> : null}
 
+      <SourcePolicyNote>
+        <p>
+          Claim source paths expose source-document metadata and outbound citations. Raw source
+          bodies remain outside public dashboard routes.
+        </p>
+      </SourcePolicyNote>
+
       {data ? (
         <Panel
           title={`${data.sources.length} source document${data.sources.length === 1 ? '' : 's'}`}
@@ -59,16 +67,26 @@ export default async function ClaimPage({ params }: { params: Promise<{ id: stri
                       </p>
                     </div>
                     {source.url ? (
-                      <Link
-                        href={source.url}
-                        target="_blank"
-                        rel="noreferrer"
-                        className="underline"
-                      >
-                        Open citation
-                      </Link>
+                      <div className="flex flex-wrap gap-2">
+                        <Link
+                          href={source.url}
+                          target="_blank"
+                          rel="noreferrer"
+                          className="underline"
+                        >
+                          Open citation
+                        </Link>
+                        <Link
+                          href={`/source/${encodeURIComponent(source.id)}`}
+                          className="underline"
+                        >
+                          Source record
+                        </Link>
+                      </div>
                     ) : (
-                      <span className="text-neutral-500">No public URL</span>
+                      <Link href={`/source/${encodeURIComponent(source.id)}`} className="underline">
+                        Source record
+                      </Link>
                     )}
                   </div>
                 </li>

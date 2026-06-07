@@ -121,6 +121,53 @@ describe('IntercalClient — request building', () => {
       concernType: 'outdated',
     });
   });
+
+  it('manages subscriptions through generated contract shapes', async () => {
+    const body = {
+      subscription: {
+        id: '33333333-3333-4333-8333-333333333333',
+        target: { kind: 'entity', entityId: '22222222-2222-4222-8222-222222222222' },
+        deliveryMethod: 'polling',
+        minImportance: 0.2,
+        tokenBudget: 800,
+        isActive: true,
+        createdAt: '2026-06-06T12:00:00Z',
+        updatedAt: '2026-06-06T12:00:00Z',
+      },
+    };
+    const { impl, lastCall } = stubFetch(200, body);
+    const client = new IntercalClient({ baseUrl: BASE, fetch: impl, apiKey: 'secret-token' });
+
+    const res = await client.createSubscription({
+      target: { kind: 'entity', entityId: '22222222-2222-4222-8222-222222222222' },
+      deliveryMethod: 'polling',
+      minImportance: 0.2,
+      tokenBudget: 800,
+    });
+
+    expect(res).toEqual(body);
+    const call = lastCall();
+    expect(call.url).toBe(`${BASE}/v1/subscriptions`);
+    expect(call.init?.method).toBe('POST');
+    expect(new Headers(call.init?.headers).get('authorization')).toBe('Bearer secret-token');
+    expect(JSON.parse(String(call.init?.body))).toMatchObject({
+      target: { kind: 'entity' },
+      deliveryMethod: 'polling',
+    });
+  });
+
+  it('lists subscriptions with bearer auth and no query params', async () => {
+    const body = { subscriptions: [] };
+    const { impl, lastCall } = stubFetch(200, body);
+    const client = new IntercalClient({ baseUrl: BASE, fetch: impl, apiKey: 'secret-token' });
+
+    await client.listSubscriptions();
+
+    const url = new URL(lastCall().url);
+    expect(url.origin + url.pathname).toBe(`${BASE}/v1/subscriptions`);
+    expect(url.search).toBe('');
+    expect(lastCall().init?.method).toBe('GET');
+  });
 });
 
 describe('IntercalClient — typed responses', () => {

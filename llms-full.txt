@@ -493,8 +493,10 @@ adapter changes, not schema rewrites. Front-door compute swaps are separate rele
 current launch uses Vercel-specific route mounts and trusted client-IP header assumptions that must
 be revalidated before moving production traffic to Cloudflare Workers or Pages.
 
-Live R2 bucket proof is operator-gated unless the shell has Cloudflare account access or R2 S3
-credentials plus an S3 client. Missing provider telemetry is reported as unavailable, not guessed.
+Live R2 bucket proof has been verified with Wrangler for Cloudflare account `jami-studio`: bucket
+`intercal` exists in location `ENAM` with default storage class `Standard`. This is bucket metadata
+proof, not a fresh source-document object write/read smoke through the S3 adapter. Missing provider
+telemetry is reported as unavailable, not guessed.
 
 ## Budgets
 

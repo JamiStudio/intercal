@@ -42,7 +42,7 @@ Intercal is greenfield enough that arbitrary incrementalism is a liability. Exec
   `/docs`, checked `llms.txt` / `llms-full.txt` exports, and a `pnpm docs:check` drift checker.
 - `docs/README.md` does not yet list the baseline seeding report.
 - The accepted hosted topology is Vercel for dashboard/REST/MCP, Neon for Postgres, GitHub Actions and Cloud Run Jobs for pipeline execution, Upstash for queue/cache, and Cloudflare R2 behind the S3 adapter.
-- `jami.studio` is already connected to Cloudflare DNS. R2 is the accepted object-storage target behind the S3 adapter, but live bucket proof remains operator-gated until Cloudflare account access or R2 S3 credentials are available in the shell. Bluehost remains the registrar only while Cloudflare nameservers are authoritative.
+- `jami.studio` is already connected to Cloudflare DNS. R2 is the accepted object-storage target behind the S3 adapter, and Workstream 9 pass 3 verified bucket `intercal` in Cloudflare account `jami-studio` through Wrangler. Bluehost remains the registrar only while Cloudflare nameservers are authoritative.
 - `intercal.jami.studio` is attached to the Intercal Vercel project, verified live, and is now the official Intercal public domain. Existing Vercel/legacy domain redirects remain in place to avoid breaking current links.
 - `www.jami.studio` has no live site in this repo and is not an Intercal blocker. Future studio-site work belongs outside this repo.
 - Domain routing should keep Cloudflare as DNS/R2/control layer and Vercel as app host for now. Moving compute to Cloudflare Workers is a later provider swap, not a prerequisite.
@@ -1459,14 +1459,14 @@ Implementation tasks:
 
 - [x] Audit whether any code depends on Vercel-specific behavior beyond deployment config.
 - [x] Confirm Hono/API/MCP portability claims remain true after public pages and docs land.
-- [!] Confirm Cloudflare R2 storage is live behind the S3 adapter.
+- [x] Confirm Cloudflare R2 storage is live behind the S3 adapter. Pass 3 verified the live R2 bucket; fresh source-document object write/read through the adapter remains a separate bounded smoke.
 - [x] Confirm no public page leaks source text against policy.
 - [x] Confirm no marketing claim exceeds corpus coverage or API/MCP behavior.
 - [x] Decide whether to keep `intercal.jami.studio`, purchase an Intercal-owned domain, or prepare Cloudflare compute proof as a separate decision record.
 
 Exit criteria:
 
-- [~] Public launch is complete on the chosen topology, and future host/domain moves are explicit decisions rather than hidden pressure. Pass 1 documents the current Vercel launch posture and future decisions; live R2 proof remains operator-gated because this shell lacked Cloudflare/R2 tooling and env.
+- [x] Public launch is complete on the chosen topology, and future host/domain moves are explicit decisions rather than hidden pressure. Pass 1 documented the current Vercel launch posture and future decisions; pass 3 verified live R2 bucket proof through Wrangler while keeping source-document object IO as a separate bounded smoke.
 
 Suggested verification:
 
@@ -1526,8 +1526,8 @@ Pass 2 dispatch note:
 Pass 2 closeout note: fresh-context audit rechecked the pass 1 provider posture against code,
 public docs, generated exports, live official-domain routes, and available provider tooling. One
 non-critical wording drift was fixed: the high-level roadmap and public operations page now say R2
-is the accepted S3-adapter object-storage target, while live bucket proof remains operator-gated
-until Cloudflare account access or R2 S3 credentials are available in the shell. Vercel-specific
+is the accepted S3-adapter object-storage target, while live bucket proof was still unavailable from
+that pass 2 shell. Pass 3 superseded this with Wrangler bucket metadata proof. Vercel-specific
 launch behavior remains limited to `hono/vercel`, `VERCEL_URL`, Next.js Node runtime settings, MCP
 `maxDuration`, and REST trusted client-IP header assumptions; Cloudflare compute remains separate
 future decision work. Live smokes passed for public pages, docs, OpenAPI, REST freshness/evidence,
@@ -1546,6 +1546,19 @@ Pass 3 dispatch note:
   operator-gated wording, Workstream 9 is not closed yet. Dispatched Workstream 9 pass 3 to
   fresh-context thread `019ea08b-3284-7451-944d-71fd5f175910` to update the docs/source exports and
   recheck the release/provider posture. Active stream: Workstream 9 only.
+
+Pass 3 closeout note: the pass 3 audit re-ran the non-destructive R2 proof from this shell using
+`pnpm dlx wrangler`. `wrangler whoami` authenticated with an Account API Token for Cloudflare
+account `jami-studio` (`c294df364db8742bc02db57c046043ef`), `wrangler r2 bucket list` returned
+bucket `intercal` created `2026-06-05T01:59:17.083Z`, and `wrangler r2 bucket info intercal`
+returned location `ENAM`, default storage class `Standard`, object count `78`, and bucket size
+`90.3 kB`. Durable release/provider docs, public operations transparency, generated docs exports,
+the Workstream 9 pass log, and changelog fragments now reflect verified bucket proof instead of
+stale operator-gated wording. The proof does not claim a fresh source-document object write/read
+through the S3 adapter; that remains a separate bounded adapter or backup-upload smoke. Hono/API/MCP
+portability, Vercel-specific header/mount assumptions, the `intercal.jami.studio` domain decision,
+and Cloudflare compute future-proof boundaries remain unchanged. Gate result: B - production-
+meaningful provider proof documentation. Workstream 9 is ready for closeout.
 
 ## Final Verification And Closeout
 
@@ -1579,7 +1592,7 @@ Pass 3 dispatch note:
 - [x] `intercal.jami.studio` serves the Intercal public product surface, docs, REST, OpenAPI, and MCP from the accepted Vercel topology.
 - [ ] Docs are ready for Mintlify or same-origin rendering and include `llms.txt`, `llms-full.txt`, copyable page text, and verified examples.
 - [ ] Marketing and AI SEO surfaces are crawlable, canonical, and backed by actual product behavior.
-- [ ] Cloudflare DNS and R2 are used where they help now; compute migration remains an explicit future proof, not a current blocker.
+- [x] Cloudflare DNS and R2 are used where they help now; compute migration remains an explicit future proof, not a current blocker. R2 bucket proof is verified; fresh object IO smoke remains separate.
 - [ ] Durable docs, decisions, and runbooks reflect the real deployed behavior.
 
 ## Implementation Order

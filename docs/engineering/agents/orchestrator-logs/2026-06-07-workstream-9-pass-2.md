@@ -9,8 +9,8 @@ Worker scope: Workstream 9 pass 2 only
 Fresh-context pass 2 rechecked the pass 1 release/provider posture docs against live code, public
 routes, and available provider tooling. One non-critical wording drift was fixed: the active roadmap
 and public operations page now distinguish Cloudflare R2 as the accepted object-storage target behind
-the S3 adapter from live R2 bucket proof, which remains operator-gated until Cloudflare account
-access or R2 S3 credentials are available in the shell.
+the S3 adapter from live R2 bucket proof, which was still unavailable from that pass 2 shell. This
+pass 2 proof gap was superseded by Workstream 9 pass 3 Wrangler bucket metadata proof.
 
 No code, generated contracts, Cloudflare Workers/Pages compute, domain purchase, DNS change, or
 unrelated Jami Studio routing was changed.
@@ -24,7 +24,8 @@ unrelated Jami Studio routing was changed.
 - Public docs and marketing copy remain bounded to the implemented REST/MCP V1 surface and the
   reviewed broad AI-history proof slice.
 - Public source-policy pages continue to prohibit raw source-body exposure.
-- R2 live bucket proof could not run without Cloudflare/R2 credentials or `wrangler`/S3 tooling.
+- R2 live bucket proof could not run in the pass 2 shell without Cloudflare/R2 credentials or
+  `wrangler`/S3 tooling; Workstream 9 pass 3 later verified the bucket through Wrangler.
 
 ## Verification
 
@@ -38,10 +39,10 @@ unrelated Jami Studio routing was changed.
 
 ## Unavailable Proof
 
-R2 live bucket proof remained unavailable in this shell: no `S3_*`, Cloudflare token/account, or AWS
-credential environment was present, and `wrangler` / `aws` were not on `PATH`. The next operator
-action is to run `wrangler r2 bucket list` / `wrangler r2 bucket info <bucket> --json`, or an S3
-metadata/list proof with R2 credentials, without printing credential values.
+R2 live bucket proof was unavailable in the pass 2 shell: no `S3_*`, Cloudflare token/account, or
+AWS credential environment was present, and `wrangler` / `aws` were not on `PATH`. Workstream 9 pass
+3 superseded this unavailable proof with non-destructive Wrangler bucket metadata; the remaining
+follow-up is an S3-adapter object write/read smoke if object IO needs fresh validation.
 
 ## Gate
 

@@ -209,14 +209,15 @@ Optional S3 API metadata proof, with credentials supplied through environment va
 aws s3 ls s3://<bucket> --endpoint-url <r2-s3-endpoint>
 ```
 
-Operator-gated: bucket list/info needs Cloudflare auth; real upload proof requires AWS CLI plus R2
-S3 credentials.
+Current proof from Workstream 9 pass 3 (2026-06-07): `pnpm dlx wrangler whoami` authenticated with
+an Account API Token for Cloudflare account `jami-studio`
+(`c294df364db8742bc02db57c046043ef`), `pnpm dlx wrangler r2 bucket list` returned bucket
+`intercal` created `2026-06-05T01:59:17.083Z`, and `pnpm dlx wrangler r2 bucket info intercal`
+returned location `ENAM`, default storage class `Standard`, object count `78`, and bucket size
+`90.3 kB`.
 
-Current Workstream 9 pass 1 gap (2026-06-07): this shell had no `S3_*`,
-`CLOUDFLARE_API_TOKEN`, `CLOUDFLARE_ACCOUNT_ID`, `AWS_ACCESS_KEY_ID`, or
-`AWS_SECRET_ACCESS_KEY` environment variables, `wrangler` was not installed, and `aws` was not
-installed. The exact next action is to run the proof commands above from an operator shell with
-Cloudflare account access or R2 S3 credentials, without printing credential values.
+Remaining proof: real upload/read proof requires R2 S3 credentials and an S3 client or a bounded
+adapter smoke. Do not claim source-document object IO was revalidated until that smoke is run.
 
 ## Upstash Queue And Rate-Limit Store
 
@@ -460,7 +461,7 @@ Provider-specific notes:
 - [ ] Domain/DNS/TLS proof passed or domain ownership is explicitly missing.
 - [ ] SSH/VPS proof passed or VPS is explicitly not provisioned.
 - [ ] Neon project/branch proof passed against a verified DB target.
-- [ ] R2 bucket proof passed.
+- [x] R2 bucket proof passed.
 - [ ] Upstash database proof passed.
 - [ ] Vertex/Gemini auth posture proof passed.
 - [ ] Cloud Run/Cloud Build/Artifact Registry/Secret Manager proof passed.

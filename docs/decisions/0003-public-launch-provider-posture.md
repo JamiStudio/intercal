@@ -31,8 +31,11 @@ behavior, Node/Postgres compatibility, and deployment rollback.
   `x-forwarded-for` semantics. This is acceptable for the current Vercel launch, but any Cloudflare
   compute move must re-prove the trusted-header model before production traffic uses it.
 - Object storage is still provider-swappable behind `StoragePort` and the S3-compatible adapter.
-  Live R2 bucket proof is operator-gated unless the shell has Cloudflare/Wrangler access or R2 S3
-  credentials plus an S3 client.
+  Workstream 9 pass 3 verified Cloudflare R2 bucket proof through Wrangler: account `jami-studio`
+  (`c294df364db8742bc02db57c046043ef`) contains bucket `intercal`, created
+  `2026-06-05T01:59:17.083Z`, in location `ENAM`, default storage class `Standard`, with 78 objects
+  and 90.3 kB. That proves live bucket presence and control-plane access; it does not claim a fresh
+  source-document object write/read smoke through the S3 adapter.
 - Public pages and docs use citation metadata, coverage states, and policy-allowed snippets. They do
   not add a dashboard-only raw source body route.
 - Public marketing language remains bounded to the reviewed broad AI-history proof slice and the

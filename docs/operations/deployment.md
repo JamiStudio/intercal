@@ -42,12 +42,14 @@ The Vercel-specific behavior currently found in code is acceptable for this laun
   per-IP rate limits.
 
 Current R2 proof status: the storage adapter is S3-compatible and supports Cloudflare R2 through
-`S3_*` environment variables, but this pass could not prove the live bucket from the shell. No
-`S3_*`, `CLOUDFLARE_API_TOKEN`, or `CLOUDFLARE_ACCOUNT_ID` variables were present, `wrangler` was
-not on `PATH`, and `aws` was not on `PATH`. To verify live R2, provide Cloudflare account access
-with `wrangler r2 bucket list` / `wrangler r2 bucket info <bucket> --json`, or provide R2 S3
-credentials plus an S3 client and run a metadata/list or backup upload proof without printing
-credential values.
+`S3_*` environment variables. Workstream 9 pass 3 verified the live Cloudflare account and bucket
+non-destructively with `pnpm dlx wrangler`: `whoami` authenticated with an Account API Token for
+account `jami-studio` (`c294df364db8742bc02db57c046043ef`), `r2 bucket list` returned bucket
+`intercal` created `2026-06-05T01:59:17.083Z`, and `r2 bucket info intercal` returned location
+`ENAM`, default storage class `Standard`, object count `78`, and bucket size `90.3 kB`. This proves
+the bucket exists in the intended Cloudflare account. It does not prove a fresh source-document
+object write/read through the S3 adapter; run a bounded adapter smoke or backup upload proof with R2
+S3 credentials before claiming object IO was revalidated.
 
 ## DNS And TLS
 

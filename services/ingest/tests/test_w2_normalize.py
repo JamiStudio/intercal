@@ -337,9 +337,7 @@ def _doc_row(
 async def test_normalize_document_missing_row_raises_value_error() -> None:
     pool = _make_pool(row=None)
     with pytest.raises(ValueError, match="not found"):
-        await normalize_document(
-            document_id=str(uuid.uuid4()), pool=pool, storage=None
-        )
+        await normalize_document(document_id=str(uuid.uuid4()), pool=pool, storage=None)
 
 
 @pytest.mark.asyncio
@@ -351,9 +349,7 @@ async def test_normalize_document_already_normalised_skips() -> None:
         normalized_at=datetime.datetime.now(tz=datetime.UTC),
     )
     pool = _make_pool(row=row)
-    result = await normalize_document(
-        document_id=str(uuid.uuid4()), pool=pool, storage=None
-    )
+    result = await normalize_document(document_id=str(uuid.uuid4()), pool=pool, storage=None)
     assert result["skipped"] is True
     # execute should NOT be called (no DB writes for a skip).
     pool.execute.assert_not_called()
@@ -381,9 +377,7 @@ async def test_normalize_document_already_normalised_force_reruns() -> None:
 async def test_normalize_document_empty_body_marks_0_chunks() -> None:
     row = _doc_row(cleaned_text="   ")
     pool = _make_pool(row=row)
-    result = await normalize_document(
-        document_id=str(uuid.uuid4()), pool=pool, storage=None
-    )
+    result = await normalize_document(document_id=str(uuid.uuid4()), pool=pool, storage=None)
     assert result["skipped"] is False
     assert result["chunk_count"] == 0
 
@@ -394,8 +388,11 @@ async def test_normalize_document_plain_text_produces_chunks() -> None:
     row = _doc_row(cleaned_text=text)
     pool = _make_pool(row=row)
     result = await normalize_document(
-        document_id=str(uuid.uuid4()), pool=pool, storage=None,
-        chunk_size=200, chunk_overlap=40,
+        document_id=str(uuid.uuid4()),
+        pool=pool,
+        storage=None,
+        chunk_size=200,
+        chunk_overlap=40,
     )
     assert result["skipped"] is False
     assert int(result["chunk_count"]) >= 1  # type: ignore[arg-type]
@@ -412,18 +409,13 @@ async def test_normalize_document_html_content_type_strips_tags() -> None:
         metadata={"content_type": "text/html"},
     )
     pool = _make_pool(row=row)
-    result = await normalize_document(
-        document_id=str(uuid.uuid4()), pool=pool, storage=None
-    )
+    result = await normalize_document(document_id=str(uuid.uuid4()), pool=pool, storage=None)
     assert result["skipped"] is False
     # Verify that the cleaned text written to DB does not contain HTML tags.
     # The first execute call that mentions cleaned_text should not have <p> in it.
     execute_calls = pool.execute.call_args_list
     # Find the UPDATE source_documents SET cleaned_text call.
-    cleaned_text_updates = [
-        c for c in execute_calls
-        if c.args and "cleaned_text" in str(c.args[0])
-    ]
+    cleaned_text_updates = [c for c in execute_calls if c.args and "cleaned_text" in str(c.args[0])]
     if cleaned_text_updates:
         # Second positional arg is the cleaned_text value.
         written_text = cleaned_text_updates[0].args[2]  # $2 in the SQL
@@ -439,9 +431,7 @@ async def test_normalize_document_json_content_type_flattens() -> None:
         metadata={"content_type": "application/json"},
     )
     pool = _make_pool(row=row)
-    result = await normalize_document(
-        document_id=str(uuid.uuid4()), pool=pool, storage=None
-    )
+    result = await normalize_document(document_id=str(uuid.uuid4()), pool=pool, storage=None)
     assert result["skipped"] is False
     assert int(result["chunk_count"]) >= 1  # type: ignore[arg-type]
 
@@ -452,9 +442,7 @@ async def test_normalize_document_language_detected() -> None:
     text = "中文测试内容 " * 60
     row = _doc_row(cleaned_text=text, language="en")
     pool = _make_pool(row=row)
-    result = await normalize_document(
-        document_id=str(uuid.uuid4()), pool=pool, storage=None
-    )
+    result = await normalize_document(document_id=str(uuid.uuid4()), pool=pool, storage=None)
     assert result["language"] == "zh"
 
 
@@ -471,9 +459,7 @@ async def test_normalize_document_fetches_from_storage_when_no_cleaned_text() ->
         redistribution_allowed=True,
     )
     pool = _make_pool(row=row)
-    result = await normalize_document(
-        document_id=str(uuid.uuid4()), pool=pool, storage=storage
-    )
+    result = await normalize_document(document_id=str(uuid.uuid4()), pool=pool, storage=storage)
     storage.get.assert_awaited_once_with("raw/source-id/abc123")
     assert int(result["chunk_count"]) >= 1  # type: ignore[arg-type]
 
@@ -490,9 +476,7 @@ async def test_normalize_document_storage_failure_graceful() -> None:
         redistribution_allowed=True,
     )
     pool = _make_pool(row=row)
-    result = await normalize_document(
-        document_id=str(uuid.uuid4()), pool=pool, storage=storage
-    )
+    result = await normalize_document(document_id=str(uuid.uuid4()), pool=pool, storage=storage)
     assert result["chunk_count"] == 0
 
 
@@ -503,9 +487,7 @@ async def test_normalize_document_idempotent_chunk_upsert() -> None:
     row = _doc_row(cleaned_text=text)
     pool = _make_pool(row=row)
 
-    result1 = await normalize_document(
-        document_id=str(uuid.uuid4()), pool=pool, storage=None
-    )
+    result1 = await normalize_document(document_id=str(uuid.uuid4()), pool=pool, storage=None)
     # Reset mock to simulate the row now existing.
     pool.execute.reset_mock()
     # Second call with force=True.
@@ -526,13 +508,15 @@ async def test_normalize_document_json_sniffed_when_no_content_type_in_metadata(
     """
     import json as _json
 
-    payload = _json.dumps({
-        "change": {
-            "title": "Wikidata entity Q42",
-            "comment": "/* wbsetlabel-set:1|en */ Douglas Adams",
-            "timestamp": "2026-06-04T00:00:00Z",
+    payload = _json.dumps(
+        {
+            "change": {
+                "title": "Wikidata entity Q42",
+                "comment": "/* wbsetlabel-set:1|en */ Douglas Adams",
+                "timestamp": "2026-06-04T00:00:00Z",
+            }
         }
-    })
+    )
     # metadata has no 'content_type' key — simulates W1 Wikidata documents.
     row = _doc_row(cleaned_text=payload, metadata={"adapter": "wikidata_changes_v1"})
     pool = _make_pool(row=row)
@@ -541,9 +525,7 @@ async def test_normalize_document_json_sniffed_when_no_content_type_in_metadata(
     assert int(result["chunk_count"]) >= 1  # type: ignore[arg-type]
     # Verify that the normalised text was written to the DB and does not contain raw JSON syntax.
     execute_calls = pool.execute.call_args_list
-    cleaned_text_updates = [
-        c for c in execute_calls if c.args and "cleaned_text" in str(c.args[0])
-    ]
+    cleaned_text_updates = [c for c in execute_calls if c.args and "cleaned_text" in str(c.args[0])]
     if cleaned_text_updates:
         written_text = cleaned_text_updates[0].args[2]  # $2 in UPDATE ... SET cleaned_text = $2
         # Should contain the human-readable string values, not raw JSON braces.
@@ -561,14 +543,19 @@ async def test_normalize_document_deletes_stale_chunks_on_renormalize() -> None:
     row = _doc_row(cleaned_text=text)
     pool = _make_pool(row=row)
     result = await normalize_document(
-        document_id=str(uuid.uuid4()), pool=pool, storage=None,
-        chunk_size=200, chunk_overlap=40,
+        document_id=str(uuid.uuid4()),
+        pool=pool,
+        storage=None,
+        chunk_size=200,
+        chunk_overlap=40,
     )
     n = int(result["chunk_count"])  # type: ignore[arg-type]
     # A DELETE … chunk_index >= n must be issued to prune stale rows.
     delete_calls = [
-        c for c in pool.execute.call_args_list
-        if c.args and "DELETE FROM document_chunks" in str(c.args[0])
+        c
+        for c in pool.execute.call_args_list
+        if c.args
+        and "DELETE FROM document_chunks" in str(c.args[0])
         and "chunk_index >= " in str(c.args[0])
     ]
     assert delete_calls, "expected a stale-chunk DELETE with chunk_index >= n"
@@ -582,7 +569,8 @@ async def test_normalize_document_empty_body_clears_chunks() -> None:
     pool = _make_pool(row=row)
     await normalize_document(document_id=str(uuid.uuid4()), pool=pool, storage=None)
     clear_calls = [
-        c for c in pool.execute.call_args_list
+        c
+        for c in pool.execute.call_args_list
         if c.args and "DELETE FROM document_chunks" in str(c.args[0])
     ]
     assert clear_calls, "expected a DELETE FROM document_chunks for the empty-body path"
@@ -604,8 +592,7 @@ async def test_normalize_document_large_json_routed_via_full_body_sniff() -> Non
     result = await normalize_document(document_id=str(uuid.uuid4()), pool=pool, storage=None)
     assert result["skipped"] is False
     cleaned_text_updates = [
-        c for c in pool.execute.call_args_list
-        if c.args and "cleaned_text" in str(c.args[0])
+        c for c in pool.execute.call_args_list if c.args and "cleaned_text" in str(c.args[0])
     ]
     assert cleaned_text_updates
     written = cleaned_text_updates[0].args[2]

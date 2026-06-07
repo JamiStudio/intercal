@@ -147,7 +147,7 @@ def testnormalize_name_casefold_strip() -> None:
 def testnormalize_name_unicode_nfc() -> None:
     # Decomposed vs composed form — should normalize to the same result.
     decomposed = "café"  # café with combining accent
-    composed = "caf\xe9"      # café precomposed
+    composed = "caf\xe9"  # café precomposed
     assert normalize_name(decomposed) == normalize_name(composed)
 
 
@@ -216,14 +216,18 @@ async def test_resolve_entities_external_id_existing_entity() -> None:
             sql_upper = " ".join(sql.split()).upper()
             # Mentions query
             if "FROM MENTIONS M" in sql_upper and "RESOLUTION_STATUS = 'UNRESOLVED'" in sql_upper:
-                return [_FakeRecord({
-                    "id": mention_id,
-                    "document_id": doc_id,
-                    "text_span": "Q5401080",
-                    "proposed_type": "ARTIFACT",
-                    "extraction_confidence": 0.90,
-                    "chunk_id": None,
-                })]
+                return [
+                    _FakeRecord(
+                        {
+                            "id": mention_id,
+                            "document_id": doc_id,
+                            "text_span": "Q5401080",
+                            "proposed_type": "ARTIFACT",
+                            "extraction_confidence": 0.90,
+                            "chunk_id": None,
+                        }
+                    )
+                ]
             # External-ID collision detector (step 4, fetch) — no collision here.
             if "HAVING COUNT(DISTINCT EEI.ENTITY_ID) > 1" in sql_upper:
                 return []
@@ -249,8 +253,7 @@ async def test_resolve_entities_external_id_existing_entity() -> None:
 
     # Verify UPDATE was called on mentions with the existing entity_id
     executed_updates = [
-        args for sql, args in pool.executed
-        if "UPDATE MENTIONS" in " ".join(sql.split()).upper()
+        args for sql, args in pool.executed if "UPDATE MENTIONS" in " ".join(sql.split()).upper()
     ]
     assert len(executed_updates) >= 1
     # The entity_id should be the existing one
@@ -273,14 +276,18 @@ async def test_resolve_entities_external_id_creates_new_entity() -> None:
         async def fetch(self, sql: str, *args: Any) -> list[Any]:
             sql_upper = " ".join(sql.split()).upper()
             if "FROM MENTIONS M" in sql_upper and "RESOLUTION_STATUS = 'UNRESOLVED'" in sql_upper:
-                return [_FakeRecord({
-                    "id": mention_id,
-                    "document_id": doc_id,
-                    "text_span": "Q5",
-                    "proposed_type": "ARTIFACT",
-                    "extraction_confidence": 0.90,
-                    "chunk_id": None,
-                })]
+                return [
+                    _FakeRecord(
+                        {
+                            "id": mention_id,
+                            "document_id": doc_id,
+                            "text_span": "Q5",
+                            "proposed_type": "ARTIFACT",
+                            "extraction_confidence": 0.90,
+                            "chunk_id": None,
+                        }
+                    )
+                ]
             if "PROPOSED_DECISION = 'MERGE'" in sql_upper:
                 return []
             return []
@@ -304,14 +311,14 @@ async def test_resolve_entities_external_id_creates_new_entity() -> None:
 
     # Check that INSERT INTO entities was called
     insert_sqls = [
-        sql for sql, _ in pool.executed
-        if "INSERT INTO ENTITIES" in " ".join(sql.split()).upper()
+        sql for sql, _ in pool.executed if "INSERT INTO ENTITIES" in " ".join(sql.split()).upper()
     ]
     assert len(insert_sqls) >= 1
 
     # Check that external_id was registered
     ext_id_sqls = [
-        sql for sql, _ in pool.executed
+        sql
+        for sql, _ in pool.executed
         if "INSERT INTO ENTITY_EXTERNAL_IDS" in " ".join(sql.split()).upper()
     ]
     assert len(ext_id_sqls) >= 1
@@ -333,14 +340,18 @@ async def test_resolve_entities_exact_name_match() -> None:
         async def fetch(self, sql: str, *args: Any) -> list[Any]:
             sql_upper = " ".join(sql.split()).upper()
             if "FROM MENTIONS M" in sql_upper and "RESOLUTION_STATUS = 'UNRESOLVED'" in sql_upper:
-                return [_FakeRecord({
-                    "id": mention_id,
-                    "document_id": doc_id,
-                    "text_span": "CrossRef",
-                    "proposed_type": "ORG",
-                    "extraction_confidence": 0.95,
-                    "chunk_id": None,
-                })]
+                return [
+                    _FakeRecord(
+                        {
+                            "id": mention_id,
+                            "document_id": doc_id,
+                            "text_span": "CrossRef",
+                            "proposed_type": "ORG",
+                            "extraction_confidence": 0.95,
+                            "chunk_id": None,
+                        }
+                    )
+                ]
             if "PROPOSED_DECISION = 'MERGE'" in sql_upper:
                 return []
             return []
@@ -363,8 +374,7 @@ async def test_resolve_entities_exact_name_match() -> None:
 
     # Verify UPDATE mentions references the matched entity
     update_args = [
-        args for sql, args in pool.executed
-        if "UPDATE MENTIONS" in " ".join(sql.split()).upper()
+        args for sql, args in pool.executed if "UPDATE MENTIONS" in " ".join(sql.split()).upper()
     ]
     assert update_args[0][0] == entity_id
 
@@ -384,14 +394,18 @@ async def test_resolve_entities_creates_new_entity_for_unmatched() -> None:
         async def fetch(self, sql: str, *args: Any) -> list[Any]:
             sql_upper = " ".join(sql.split()).upper()
             if "FROM MENTIONS M" in sql_upper and "RESOLUTION_STATUS = 'UNRESOLVED'" in sql_upper:
-                return [_FakeRecord({
-                    "id": mention_id,
-                    "document_id": doc_id,
-                    "text_span": "Europe PMC",
-                    "proposed_type": "ORG",
-                    "extraction_confidence": 0.95,
-                    "chunk_id": None,
-                })]
+                return [
+                    _FakeRecord(
+                        {
+                            "id": mention_id,
+                            "document_id": doc_id,
+                            "text_span": "Europe PMC",
+                            "proposed_type": "ORG",
+                            "extraction_confidence": 0.95,
+                            "chunk_id": None,
+                        }
+                    )
+                ]
             if "PROPOSED_DECISION = 'MERGE'" in sql_upper:
                 return []
             return []
@@ -406,8 +420,7 @@ async def test_resolve_entities_creates_new_entity_for_unmatched() -> None:
     assert counters["mentions_resolved"] == 1
 
     insert_sqls = [
-        sql for sql, _ in pool.executed
-        if "INSERT INTO ENTITIES" in " ".join(sql.split()).upper()
+        sql for sql, _ in pool.executed if "INSERT INTO ENTITIES" in " ".join(sql.split()).upper()
     ]
     assert len(insert_sqls) >= 1
 
@@ -429,14 +442,26 @@ async def test_resolve_entities_deduplicates_same_span() -> None:
             sql_upper = " ".join(sql.split()).upper()
             if "FROM MENTIONS M" in sql_upper and "RESOLUTION_STATUS = 'UNRESOLVED'" in sql_upper:
                 return [
-                    _FakeRecord({
-                        "id": m1, "document_id": doc_id, "text_span": "NCBI",
-                        "proposed_type": "ORG", "extraction_confidence": 0.95, "chunk_id": None,
-                    }),
-                    _FakeRecord({
-                        "id": m2, "document_id": doc_id, "text_span": "NCBI",
-                        "proposed_type": "ORG", "extraction_confidence": 0.95, "chunk_id": None,
-                    }),
+                    _FakeRecord(
+                        {
+                            "id": m1,
+                            "document_id": doc_id,
+                            "text_span": "NCBI",
+                            "proposed_type": "ORG",
+                            "extraction_confidence": 0.95,
+                            "chunk_id": None,
+                        }
+                    ),
+                    _FakeRecord(
+                        {
+                            "id": m2,
+                            "document_id": doc_id,
+                            "text_span": "NCBI",
+                            "proposed_type": "ORG",
+                            "extraction_confidence": 0.95,
+                            "chunk_id": None,
+                        }
+                    ),
                 ]
             if "PROPOSED_DECISION = 'MERGE'" in sql_upper:
                 return []
@@ -453,8 +478,7 @@ async def test_resolve_entities_deduplicates_same_span() -> None:
 
     # Both mentions updated with the same entity_id
     update_args = [
-        args for sql, args in pool.executed
-        if "UPDATE MENTIONS" in " ".join(sql.split()).upper()
+        args for sql, args in pool.executed if "UPDATE MENTIONS" in " ".join(sql.split()).upper()
     ]
     assert len(update_args) == 2
     assert update_args[0][0] == update_args[1][0]  # same entity_id
@@ -500,17 +524,28 @@ async def test_resolve_entities_embedding_review_candidate() -> None:
         async def fetch(self, sql: str, *args: Any) -> list[Any]:
             sql_upper = " ".join(sql.split()).upper()
             if "FROM MENTIONS M" in sql_upper and "RESOLUTION_STATUS = 'UNRESOLVED'" in sql_upper:
-                return [_FakeRecord({
-                    "id": mention_id, "document_id": doc_id,
-                    "text_span": "PubMed Central",
-                    "proposed_type": "ORG", "extraction_confidence": 0.85, "chunk_id": None,
-                })]
+                return [
+                    _FakeRecord(
+                        {
+                            "id": mention_id,
+                            "document_id": doc_id,
+                            "text_span": "PubMed Central",
+                            "proposed_type": "ORG",
+                            "extraction_confidence": 0.85,
+                            "chunk_id": None,
+                        }
+                    )
+                ]
             # Entity embedding query
             if "ENTITY_EMBEDDINGS EE" in sql_upper:
-                return [_FakeRecord({
-                    "entity_id": nearby_entity_id,
-                    "distance": review_distance,
-                })]
+                return [
+                    _FakeRecord(
+                        {
+                            "entity_id": nearby_entity_id,
+                            "distance": review_distance,
+                        }
+                    )
+                ]
             if "PROPOSED_DECISION = 'MERGE'" in sql_upper:
                 return []
             return []
@@ -563,16 +598,27 @@ async def test_resolve_entities_embedding_direct_match() -> None:
         async def fetch(self, sql: str, *args: Any) -> list[Any]:
             sql_upper = " ".join(sql.split()).upper()
             if "FROM MENTIONS M" in sql_upper and "RESOLUTION_STATUS = 'UNRESOLVED'" in sql_upper:
-                return [_FakeRecord({
-                    "id": mention_id, "document_id": doc_id,
-                    "text_span": "Europe PMC",
-                    "proposed_type": "ORG", "extraction_confidence": 0.90, "chunk_id": None,
-                })]
+                return [
+                    _FakeRecord(
+                        {
+                            "id": mention_id,
+                            "document_id": doc_id,
+                            "text_span": "Europe PMC",
+                            "proposed_type": "ORG",
+                            "extraction_confidence": 0.90,
+                            "chunk_id": None,
+                        }
+                    )
+                ]
             if "ENTITY_EMBEDDINGS EE" in sql_upper:
-                return [_FakeRecord({
-                    "entity_id": nearby_entity_id,
-                    "distance": merge_distance,
-                })]
+                return [
+                    _FakeRecord(
+                        {
+                            "entity_id": nearby_entity_id,
+                            "distance": merge_distance,
+                        }
+                    )
+                ]
             if "PROPOSED_DECISION = 'MERGE'" in sql_upper:
                 return []
             return []
@@ -611,37 +657,45 @@ async def test_resolve_entities_auto_merge_high_confidence() -> None:
             if "FROM MENTIONS M" in sql_upper and "RESOLUTION_STATUS = 'UNRESOLVED'" in sql_upper:
                 return []
             if "PROPOSED_DECISION = 'MERGE'" in sql_upper:
-                return [_FakeRecord({
-                    "id": candidate_id,
-                    "left_entity_id": left_id,
-                    "right_entity_id": right_id,
-                    "confidence": EXACT_MATCH_CONFIDENCE,
-                    "matching_signals": json.dumps([{"type": "exact_name"}]),
-                })]
+                return [
+                    _FakeRecord(
+                        {
+                            "id": candidate_id,
+                            "left_entity_id": left_id,
+                            "right_entity_id": right_id,
+                            "confidence": EXACT_MATCH_CONFIDENCE,
+                            "matching_signals": json.dumps([{"type": "exact_name"}]),
+                        }
+                    )
+                ]
             return []
 
         async def fetchrow(self, sql: str, *args: Any) -> Any | None:
             sql_upper = " ".join(sql.split()).upper()
             # Source entity fetch (has IS_DEPRECATED in SELECT list)
             if "IS_DEPRECATED" in sql_upper and "FROM ENTITIES" in sql_upper:
-                return _FakeRecord({
-                    "is_deprecated": False,
-                    "merged_into_id": None,
-                    "canonical_name": "EuropePMC",
-                    "type_id": "organization",
-                    "description": None,
-                    "current_state": {},
-                    "metadata": {},
-                })
+                return _FakeRecord(
+                    {
+                        "is_deprecated": False,
+                        "merged_into_id": None,
+                        "canonical_name": "EuropePMC",
+                        "type_id": "organization",
+                        "description": None,
+                        "current_state": {},
+                        "metadata": {},
+                    }
+                )
             # Target entity fetch (no IS_DEPRECATED in SELECT, just CANONICAL_NAME)
             if "CANONICAL_NAME" in sql_upper and "FROM ENTITIES" in sql_upper:
-                return _FakeRecord({
-                    "canonical_name": "Europe PMC",
-                    "type_id": "organization",
-                    "description": None,
-                    "current_state": {},
-                    "metadata": {},
-                })
+                return _FakeRecord(
+                    {
+                        "canonical_name": "Europe PMC",
+                        "type_id": "organization",
+                        "description": None,
+                        "current_state": {},
+                        "metadata": {},
+                    }
+                )
             if "ENTITY_MERGE_EVENTS" in sql_upper and "IS_REVERSED = FALSE" in sql_upper:
                 return None
             return None
@@ -653,7 +707,8 @@ async def test_resolve_entities_auto_merge_high_confidence() -> None:
 
     # Check entity_merge_events INSERT was called
     merge_inserts = [
-        sql for sql, _ in pool.executed
+        sql
+        for sql, _ in pool.executed
         if "INSERT INTO ENTITY_MERGE_EVENTS" in " ".join(sql.split()).upper()
     ]
     assert len(merge_inserts) >= 1
@@ -685,7 +740,8 @@ async def test_resolve_entities_review_candidate_not_auto_merged() -> None:
 
     # No merge event was inserted
     merge_inserts = [
-        sql for sql, _ in pool.executed
+        sql
+        for sql, _ in pool.executed
         if "INSERT INTO ENTITY_MERGE_EVENTS" in " ".join(sql.split()).upper()
     ]
     assert len(merge_inserts) == 0
@@ -702,14 +758,18 @@ async def test_resolve_entities_idempotent_rerun() -> None:
     pool = FakePool({"SELECT": []})
     c1 = await resolve_entities(pool=pool, embeddings=None)
     c2 = await resolve_entities(pool=pool, embeddings=None)
-    assert c1 == c2 == {
-        "mentions_loaded": 0,
-        "mentions_resolved": 0,
-        "entities_created": 0,
-        "candidates_created": 0,
-        "merges_performed": 0,
-        "review_needed": 0,
-    }
+    assert (
+        c1
+        == c2
+        == {
+            "mentions_loaded": 0,
+            "mentions_resolved": 0,
+            "entities_created": 0,
+            "candidates_created": 0,
+            "merges_performed": 0,
+            "review_needed": 0,
+        }
+    )
 
 
 # ──────────────────────────────────────────────────────────────────────────────
@@ -732,11 +792,18 @@ async def test_resolve_entities_embedding_failure_nonfatal() -> None:
         async def fetch(self, sql: str, *args: Any) -> list[Any]:
             sql_upper = " ".join(sql.split()).upper()
             if "FROM MENTIONS M" in sql_upper and "RESOLUTION_STATUS = 'UNRESOLVED'" in sql_upper:
-                return [_FakeRecord({
-                    "id": mention_id, "document_id": doc_id,
-                    "text_span": "NCBI",
-                    "proposed_type": "ORG", "extraction_confidence": 0.95, "chunk_id": None,
-                })]
+                return [
+                    _FakeRecord(
+                        {
+                            "id": mention_id,
+                            "document_id": doc_id,
+                            "text_span": "NCBI",
+                            "proposed_type": "ORG",
+                            "extraction_confidence": 0.95,
+                            "chunk_id": None,
+                        }
+                    )
+                ]
             if "PROPOSED_DECISION = 'MERGE'" in sql_upper:
                 return []
             return []
@@ -805,28 +872,36 @@ def testmap_predicate_to_type_unknown_returns_none() -> None:
 
 def testpayload_equal_identical() -> None:
     p: dict[str, Any] = {
-        "type_id": "person", "canonical_name": "Alice",
-        "external_ids": [], "active_relationship_count": 0,
+        "type_id": "person",
+        "canonical_name": "Alice",
+        "external_ids": [],
+        "active_relationship_count": 0,
     }
     assert payload_equal(p, p.copy()) is True
 
 
 def testpayload_equal_different_name() -> None:
     a: dict[str, Any] = {
-        "type_id": "person", "canonical_name": "Alice",
-        "external_ids": [], "active_relationship_count": 0,
+        "type_id": "person",
+        "canonical_name": "Alice",
+        "external_ids": [],
+        "active_relationship_count": 0,
     }
     b: dict[str, Any] = {
-        "type_id": "person", "canonical_name": "Bob",
-        "external_ids": [], "active_relationship_count": 0,
+        "type_id": "person",
+        "canonical_name": "Bob",
+        "external_ids": [],
+        "active_relationship_count": 0,
     }
     assert payload_equal(a, b) is False
 
 
 def testpayload_equal_different_rel_count() -> None:
     a: dict[str, Any] = {
-        "type_id": "person", "canonical_name": "Alice",
-        "external_ids": [], "active_relationship_count": 0,
+        "type_id": "person",
+        "canonical_name": "Alice",
+        "external_ids": [],
+        "active_relationship_count": 0,
     }
     b = {**a, "active_relationship_count": 1}
     assert payload_equal(a, b) is False
@@ -873,19 +948,21 @@ async def test_derive_relationships_known_predicate_writes_relationship() -> Non
     claim_id = uuid.uuid4()
     doc_id = uuid.uuid4()
 
-    pool = _make_claim_pool(claim={
-        "id": claim_id,
-        "subject_text": "Sam Altman",
-        "predicate": "holds_role",
-        "object_text": "CEO",
-        "subject_entity_id": subj,
-        "object_entity_id": obj,
-        "valid_from": None,
-        "valid_until": None,
-        "extraction_confidence": 0.90,
-        "source_document_ids": [doc_id],
-        "status": "active",
-    })
+    pool = _make_claim_pool(
+        claim={
+            "id": claim_id,
+            "subject_text": "Sam Altman",
+            "predicate": "holds_role",
+            "object_text": "CEO",
+            "subject_entity_id": subj,
+            "object_entity_id": obj,
+            "valid_from": None,
+            "valid_until": None,
+            "extraction_confidence": 0.90,
+            "source_document_ids": [doc_id],
+            "status": "active",
+        }
+    )
 
     counters = await derive_relationships(claim_id=str(claim_id), pool=pool)
 
@@ -893,7 +970,8 @@ async def test_derive_relationships_known_predicate_writes_relationship() -> Non
     assert counters["relationships_skipped"] == 0
 
     inserts = [
-        sql for sql, _ in pool.executed
+        sql
+        for sql, _ in pool.executed
         if "INSERT INTO RELATIONSHIPS" in " ".join(sql.split()).upper()
     ]
     assert len(inserts) == 1
@@ -904,19 +982,21 @@ async def test_derive_relationships_unknown_predicate_skips() -> None:
     subj = uuid.uuid4()
     obj = uuid.uuid4()
     claim_id = uuid.uuid4()
-    pool = _make_claim_pool(claim={
-        "id": claim_id,
-        "subject_text": "references",
-        "predicate": "were updated",
-        "object_text": "one time",
-        "subject_entity_id": subj,
-        "object_entity_id": obj,
-        "valid_from": None,
-        "valid_until": None,
-        "extraction_confidence": 1.0,
-        "source_document_ids": [],
-        "status": "active",
-    })
+    pool = _make_claim_pool(
+        claim={
+            "id": claim_id,
+            "subject_text": "references",
+            "predicate": "were updated",
+            "object_text": "one time",
+            "subject_entity_id": subj,
+            "object_entity_id": obj,
+            "valid_from": None,
+            "valid_until": None,
+            "extraction_confidence": 1.0,
+            "source_document_ids": [],
+            "status": "active",
+        }
+    )
 
     counters = await derive_relationships(claim_id=str(claim_id), pool=pool)
     assert counters["relationships_written"] == 0
@@ -926,28 +1006,28 @@ async def test_derive_relationships_unknown_predicate_skips() -> None:
 @pytest.mark.asyncio
 async def test_derive_relationships_claim_not_found_skips() -> None:
     pool = _make_claim_pool(claim=None)
-    counters = await derive_relationships(
-        claim_id=str(uuid.uuid4()), pool=pool
-    )
+    counters = await derive_relationships(claim_id=str(uuid.uuid4()), pool=pool)
     assert counters["relationships_skipped"] == 1
 
 
 @pytest.mark.asyncio
 async def test_derive_relationships_inactive_claim_skips() -> None:
     claim_id = uuid.uuid4()
-    pool = _make_claim_pool(claim={
-        "id": claim_id,
-        "subject_text": "A",
-        "predicate": "acquired",
-        "object_text": "B",
-        "subject_entity_id": uuid.uuid4(),
-        "object_entity_id": uuid.uuid4(),
-        "valid_from": None,
-        "valid_until": None,
-        "extraction_confidence": 0.90,
-        "source_document_ids": [],
-        "status": "superseded",
-    })
+    pool = _make_claim_pool(
+        claim={
+            "id": claim_id,
+            "subject_text": "A",
+            "predicate": "acquired",
+            "object_text": "B",
+            "subject_entity_id": uuid.uuid4(),
+            "object_entity_id": uuid.uuid4(),
+            "valid_from": None,
+            "valid_until": None,
+            "extraction_confidence": 0.90,
+            "source_document_ids": [],
+            "status": "superseded",
+        }
+    )
     counters = await derive_relationships(claim_id=str(claim_id), pool=pool)
     assert counters["relationships_skipped"] == 1
 
@@ -955,19 +1035,21 @@ async def test_derive_relationships_inactive_claim_skips() -> None:
 @pytest.mark.asyncio
 async def test_derive_relationships_low_confidence_skips() -> None:
     claim_id = uuid.uuid4()
-    pool = _make_claim_pool(claim={
-        "id": claim_id,
-        "subject_text": "A",
-        "predicate": "acquired",
-        "object_text": "B",
-        "subject_entity_id": uuid.uuid4(),
-        "object_entity_id": uuid.uuid4(),
-        "valid_from": None,
-        "valid_until": None,
-        "extraction_confidence": MIN_CLAIM_CONFIDENCE - 0.01,
-        "source_document_ids": [],
-        "status": "active",
-    })
+    pool = _make_claim_pool(
+        claim={
+            "id": claim_id,
+            "subject_text": "A",
+            "predicate": "acquired",
+            "object_text": "B",
+            "subject_entity_id": uuid.uuid4(),
+            "object_entity_id": uuid.uuid4(),
+            "valid_from": None,
+            "valid_until": None,
+            "extraction_confidence": MIN_CLAIM_CONFIDENCE - 0.01,
+            "source_document_ids": [],
+            "status": "active",
+        }
+    )
     counters = await derive_relationships(claim_id=str(claim_id), pool=pool)
     assert counters["relationships_skipped"] == 1
 
@@ -976,19 +1058,21 @@ async def test_derive_relationships_low_confidence_skips() -> None:
 async def test_derive_relationships_self_relationship_skips() -> None:
     eid = uuid.uuid4()
     claim_id = uuid.uuid4()
-    pool = _make_claim_pool(claim={
-        "id": claim_id,
-        "subject_text": "X",
-        "predicate": "acquired",
-        "object_text": "X",
-        "subject_entity_id": eid,
-        "object_entity_id": eid,
-        "valid_from": None,
-        "valid_until": None,
-        "extraction_confidence": 0.9,
-        "source_document_ids": [],
-        "status": "active",
-    })
+    pool = _make_claim_pool(
+        claim={
+            "id": claim_id,
+            "subject_text": "X",
+            "predicate": "acquired",
+            "object_text": "X",
+            "subject_entity_id": eid,
+            "object_entity_id": eid,
+            "valid_from": None,
+            "valid_until": None,
+            "extraction_confidence": 0.9,
+            "source_document_ids": [],
+            "status": "active",
+        }
+    )
     counters = await derive_relationships(claim_id=str(claim_id), pool=pool)
     assert counters["relationships_skipped"] == 1
 
@@ -997,19 +1081,22 @@ async def test_derive_relationships_self_relationship_skips() -> None:
 async def test_derive_relationships_unresolved_entity_skips() -> None:
     """If neither entity end can be resolved, claim is skipped."""
     claim_id = uuid.uuid4()
-    pool = _make_claim_pool(claim={
-        "id": claim_id,
-        "subject_text": "unknown subject",
-        "predicate": "acquired",
-        "object_text": "unknown object",
-        "subject_entity_id": None,
-        "object_entity_id": None,
-        "valid_from": None,
-        "valid_until": None,
-        "extraction_confidence": 0.9,
-        "source_document_ids": [],
-        "status": "active",
-    }, mention_entity_id=None)
+    pool = _make_claim_pool(
+        claim={
+            "id": claim_id,
+            "subject_text": "unknown subject",
+            "predicate": "acquired",
+            "object_text": "unknown object",
+            "subject_entity_id": None,
+            "object_entity_id": None,
+            "valid_from": None,
+            "valid_until": None,
+            "extraction_confidence": 0.9,
+            "source_document_ids": [],
+            "status": "active",
+        },
+        mention_entity_id=None,
+    )
     counters = await derive_relationships(claim_id=str(claim_id), pool=pool)
     assert counters["relationships_skipped"] == 1
 
@@ -1025,19 +1112,21 @@ async def test_derive_relationships_mention_fallback_resolves_entity() -> None:
         async def fetchrow(self, sql: str, *args: Any) -> Any | None:
             sql_upper = " ".join(sql.split()).upper()
             if "FROM CLAIMS" in sql_upper and "WHERE ID = $1" in sql_upper:
-                return _FakeRecord({
-                    "id": claim_id,
-                    "subject_text": "OpenAI",
-                    "predicate": "acquired",
-                    "object_text": "TargetCo",
-                    "subject_entity_id": None,
-                    "object_entity_id": obj,
-                    "valid_from": None,
-                    "valid_until": None,
-                    "extraction_confidence": 0.85,
-                    "source_document_ids": [],
-                    "status": "active",
-                })
+                return _FakeRecord(
+                    {
+                        "id": claim_id,
+                        "subject_text": "OpenAI",
+                        "predicate": "acquired",
+                        "object_text": "TargetCo",
+                        "subject_entity_id": None,
+                        "object_entity_id": obj,
+                        "valid_from": None,
+                        "valid_until": None,
+                        "extraction_confidence": 0.85,
+                        "source_document_ids": [],
+                        "status": "active",
+                    }
+                )
             if "FROM MENTIONS M" in sql_upper and "JOIN CLAIMS C" in sql_upper:
                 # Only return entity for the subject lookup (first call)
                 return _FakeRecord({"entity_id": subj})
@@ -1089,7 +1178,8 @@ async def test_derive_relationships_idempotent_rerun_updates_claim_ids() -> None
     assert counters["relationships_written"] == 1
     # No new INSERT because relationship already exists
     inserts = [
-        sql for sql, _ in pool.executed
+        sql
+        for sql, _ in pool.executed
         if "INSERT INTO RELATIONSHIPS" in " ".join(sql.split()).upper()
     ]
     assert len(inserts) == 0
@@ -1131,8 +1221,7 @@ async def test_derive_relationships_idempotent_adds_new_claim_to_existing() -> N
 
     # UPDATE (not INSERT) should have been issued
     updates = [
-        sql for sql, _ in pool.executed
-        if "UPDATE RELATIONSHIPS" in " ".join(sql.split()).upper()
+        sql for sql, _ in pool.executed if "UPDATE RELATIONSHIPS" in " ".join(sql.split()).upper()
     ]
     assert len(updates) >= 1
 
@@ -1195,7 +1284,8 @@ async def test_write_fact_versions_new_entity_writes_version() -> None:
     assert counters["versions_skipped"] == 0
 
     inserts = [
-        sql for sql, _ in pool.executed
+        sql
+        for sql, _ in pool.executed
         if "INSERT INTO FACT_VERSIONS" in " ".join(sql.split()).upper()
     ]
     assert len(inserts) == 1
@@ -1205,13 +1295,16 @@ async def test_write_fact_versions_new_entity_writes_version() -> None:
 async def test_write_fact_versions_identical_payload_skips() -> None:
     """Re-running with an unchanged entity state → skipped (idempotent)."""
     entity_id = uuid.uuid4()
-    stored_payload = json.dumps({
-        "type_id": "organization",
-        "canonical_name": "OpenAI",
-        "description": "AI company",
-        "external_ids": [],
-        "active_relationship_count": 0,
-    }, sort_keys=True)
+    stored_payload = json.dumps(
+        {
+            "type_id": "organization",
+            "canonical_name": "OpenAI",
+            "description": "AI company",
+            "external_ids": [],
+            "active_relationship_count": 0,
+        },
+        sort_keys=True,
+    )
 
     pool = _make_entity_pool(
         entity={
@@ -1245,13 +1338,16 @@ async def test_write_fact_versions_changed_payload_writes_and_closes_old() -> No
     old_version_id = uuid.uuid4()
 
     # Stored payload has rel_count=0; current state has rel_count=1.
-    stored_payload = json.dumps({
-        "type_id": "organization",
-        "canonical_name": "OpenAI",
-        "description": None,
-        "external_ids": [],
-        "active_relationship_count": 0,
-    }, sort_keys=True)
+    stored_payload = json.dumps(
+        {
+            "type_id": "organization",
+            "canonical_name": "OpenAI",
+            "description": None,
+            "external_ids": [],
+            "active_relationship_count": 0,
+        },
+        sort_keys=True,
+    )
 
     pool = _make_entity_pool(
         entity={
@@ -1274,20 +1370,21 @@ async def test_write_fact_versions_changed_payload_writes_and_closes_old() -> No
     assert counters["versions_written"] == 1
 
     inserts = [
-        sql for sql, _ in pool.executed
+        sql
+        for sql, _ in pool.executed
         if "INSERT INTO FACT_VERSIONS" in " ".join(sql.split()).upper()
     ]
     assert len(inserts) == 1
 
     # Old version must be closed via UPDATE (not deleted)
     updates = [
-        sql for sql, _ in pool.executed
-        if "UPDATE FACT_VERSIONS" in " ".join(sql.split()).upper()
+        sql for sql, _ in pool.executed if "UPDATE FACT_VERSIONS" in " ".join(sql.split()).upper()
     ]
     assert len(updates) == 1
     # UPDATE args must include old_version_id
     update_args = [
-        args for sql, args in pool.executed
+        args
+        for sql, args in pool.executed
         if "UPDATE FACT_VERSIONS" in " ".join(sql.split()).upper()
     ]
     assert any(old_version_id in args for args in update_args)
@@ -1323,7 +1420,8 @@ async def test_write_fact_versions_with_external_ids_in_payload() -> None:
 
     # Check payload written includes the external_id
     insert_args = [
-        args for sql, args in pool.executed
+        args
+        for sql, args in pool.executed
         if "INSERT INTO FACT_VERSIONS" in " ".join(sql.split()).upper()
     ]
     assert len(insert_args) == 1
@@ -1348,18 +1446,21 @@ async def test_write_fact_versions_provenance_claim_ids() -> None:
         },
         external_ids=[],
         current_fact_version=None,
-        claim_rows=[{
-            "id": claim_id,
-            "source_document_ids": [doc_id],
-            "extraction_confidence": 0.90,
-        }],
+        claim_rows=[
+            {
+                "id": claim_id,
+                "source_document_ids": [doc_id],
+                "extraction_confidence": 0.90,
+            }
+        ],
     )
 
     counters = await write_fact_versions(entity_id=str(entity_id), pool=pool)
     assert counters["versions_written"] == 1
 
     insert_args = [
-        args for sql, args in pool.executed
+        args
+        for sql, args in pool.executed
         if "INSERT INTO FACT_VERSIONS" in " ".join(sql.split()).upper()
     ]
     assert len(insert_args) == 1
@@ -1451,11 +1552,15 @@ async def testfind_external_id_collisions_detects_shared_id() -> None:
         async def fetch(self, sql: str, *args: Any) -> list[Any]:
             sql_upper = " ".join(sql.split()).upper()
             if "HAVING COUNT(DISTINCT EEI.ENTITY_ID) > 1" in sql_upper:
-                return [_FakeRecord({
-                    "namespace": "wikidata",
-                    "external_id": "Q5401080",
-                    "entity_ids": [e2, e1],  # unsorted on purpose
-                })]
+                return [
+                    _FakeRecord(
+                        {
+                            "namespace": "wikidata",
+                            "external_id": "Q5401080",
+                            "entity_ids": [e2, e1],  # unsorted on purpose
+                        }
+                    )
+                ]
             return []
 
     pairs = await find_external_id_collisions(CollisionPool())
@@ -1484,10 +1589,15 @@ async def testfind_external_id_collisions_chains_three_entities() -> None:
         async def fetch(self, sql: str, *args: Any) -> list[Any]:
             sql_upper = " ".join(sql.split()).upper()
             if "HAVING COUNT(DISTINCT EEI.ENTITY_ID) > 1" in sql_upper:
-                return [_FakeRecord({
-                    "namespace": "wikidata", "external_id": "Q5",
-                    "entity_ids": [e3, e1, e2],
-                })]
+                return [
+                    _FakeRecord(
+                        {
+                            "namespace": "wikidata",
+                            "external_id": "Q5",
+                            "entity_ids": [e3, e1, e2],
+                        }
+                    )
+                ]
             return []
 
     pairs = await find_external_id_collisions(CollisionPool())
@@ -1525,19 +1635,28 @@ async def test_resolve_entities_external_id_collision_auto_merges() -> None:
                 return []
             # External-ID collision detector returns one colliding pair.
             if "HAVING COUNT(DISTINCT EEI.ENTITY_ID) > 1" in sql_upper:
-                return [_FakeRecord({
-                    "namespace": "wikidata", "external_id": "Q5401080",
-                    "entity_ids": [e_high, e_low],
-                })]
+                return [
+                    _FakeRecord(
+                        {
+                            "namespace": "wikidata",
+                            "external_id": "Q5401080",
+                            "entity_ids": [e_high, e_low],
+                        }
+                    )
+                ]
             # Step 6 reads open merge candidates.
             if "PROPOSED_DECISION = 'MERGE'" in sql_upper:
-                return [_FakeRecord({
-                    "id": candidate_id,
-                    "left_entity_id": e_low,
-                    "right_entity_id": e_high,
-                    "confidence": EXACT_MATCH_CONFIDENCE,
-                    "matching_signals": json.dumps([{"type": "external_id"}]),
-                })]
+                return [
+                    _FakeRecord(
+                        {
+                            "id": candidate_id,
+                            "left_entity_id": e_low,
+                            "right_entity_id": e_high,
+                            "confidence": EXACT_MATCH_CONFIDENCE,
+                            "matching_signals": json.dumps([{"type": "external_id"}]),
+                        }
+                    )
+                ]
             # Re-parent: source has no aliases / external IDs to move in this fixture.
             if "FROM ENTITY_ALIASES WHERE ENTITY_ID" in sql_upper:
                 return []
@@ -1552,17 +1671,28 @@ async def test_resolve_entities_external_id_collision_auto_merges() -> None:
                 return _FakeRecord({"id": candidate_id})
             # source entity fetch (loser = right = e_high)
             if "IS_DEPRECATED" in sql_upper and "FROM ENTITIES" in sql_upper:
-                return _FakeRecord({
-                    "is_deprecated": False, "merged_into_id": None,
-                    "canonical_name": "Q5401080", "type_id": "technical_artifact",
-                    "description": None, "current_state": {}, "metadata": {},
-                })
+                return _FakeRecord(
+                    {
+                        "is_deprecated": False,
+                        "merged_into_id": None,
+                        "canonical_name": "Q5401080",
+                        "type_id": "technical_artifact",
+                        "description": None,
+                        "current_state": {},
+                        "metadata": {},
+                    }
+                )
             # target entity fetch (winner = left = e_low)
             if "CANONICAL_NAME" in sql_upper and "FROM ENTITIES" in sql_upper:
-                return _FakeRecord({
-                    "canonical_name": "single-cell analysis", "type_id": "technical_artifact",
-                    "description": None, "current_state": {}, "metadata": {},
-                })
+                return _FakeRecord(
+                    {
+                        "canonical_name": "single-cell analysis",
+                        "type_id": "technical_artifact",
+                        "description": None,
+                        "current_state": {},
+                        "metadata": {},
+                    }
+                )
             return None
 
     pool = MergePool()
@@ -1580,7 +1710,8 @@ async def test_resolve_entities_external_id_collision_auto_merges() -> None:
     assert any("INSERT INTO ENTITY_MERGE_EVENTS" in s for s in sqls)
     # Mentions pointing at the loser were re-parented onto the survivor.
     reparent = [
-        args for s, args in pool.executed
+        args
+        for s, args in pool.executed
         if "UPDATE MENTIONS SET ENTITY_ID = $1 WHERE ENTITY_ID = $2" in " ".join(s.split()).upper()
     ]
     assert reparent and reparent[0][0] == e_low and reparent[0][1] == e_high
@@ -1661,16 +1792,18 @@ async def test_link_claim_entities_exact_mention_span_links_subject() -> None:
     doc_id = uuid.uuid4()
 
     pool = _make_link_pool(
-        claims=[{
-            "id": claim_id,
-            "subject_text": "Sebastián Ramírez",
-            "object_text": "FastAPI",
-            "subject_entity_id": None,
-            "object_entity_id": None,
-            "source_document_ids": [doc_id],
-            "extraction_confidence": 0.90,
-            "metadata": {},
-        }],
+        claims=[
+            {
+                "id": claim_id,
+                "subject_text": "Sebastián Ramírez",
+                "object_text": "FastAPI",
+                "subject_entity_id": None,
+                "object_entity_id": None,
+                "source_document_ids": [doc_id],
+                "extraction_confidence": 0.90,
+                "metadata": {},
+            }
+        ],
         mention_row={"entity_id": entity_id},
         live_entity_row={"id": entity_id},
     )
@@ -1681,8 +1814,7 @@ async def test_link_claim_entities_exact_mention_span_links_subject() -> None:
     assert counters["claims_updated"] >= 1
     # Verify UPDATE was issued with the resolved entity_id
     updates = [
-        args for sql, args in pool.executed
-        if "UPDATE CLAIMS" in " ".join(sql.split()).upper()
+        args for sql, args in pool.executed if "UPDATE CLAIMS" in " ".join(sql.split()).upper()
     ]
     assert updates, "UPDATE claims must have been called"
     # First positional arg is new_subject_entity_id
@@ -1700,16 +1832,20 @@ async def test_link_claim_entities_exact_name_links_object() -> None:
         async def fetch(self, sql: str, *args: Any) -> list[Any]:
             sql_upper = " ".join(sql.split()).upper()
             if "FROM CLAIMS" in sql_upper and "SUBJECT_ENTITY_ID IS NULL" in sql_upper:
-                return [_FakeRecord({
-                    "id": claim_id,
-                    "subject_text": "tiangolo",
-                    "object_text": "FastAPI",
-                    "subject_entity_id": uuid.uuid4(),  # already linked
-                    "object_entity_id": None,
-                    "source_document_ids": [doc_id],
-                    "extraction_confidence": 0.85,
-                    "metadata": {},
-                })]
+                return [
+                    _FakeRecord(
+                        {
+                            "id": claim_id,
+                            "subject_text": "tiangolo",
+                            "object_text": "FastAPI",
+                            "subject_entity_id": uuid.uuid4(),  # already linked
+                            "object_entity_id": None,
+                            "source_document_ids": [doc_id],
+                            "extraction_confidence": 0.85,
+                            "metadata": {},
+                        }
+                    )
+                ]
             # Unioned exact-name/alias DISTINCT lookup → exactly one match.
             if "LOWER(CANONICAL_NAME) = $1" in sql_upper:
                 return [_FakeRecord({"entity_id": entity_id})]
@@ -1726,8 +1862,7 @@ async def test_link_claim_entities_exact_name_links_object() -> None:
 
     assert counters["object_linked"] >= 1
     updates = [
-        args for sql, args in pool.executed
-        if "UPDATE CLAIMS" in " ".join(sql.split()).upper()
+        args for sql, args in pool.executed if "UPDATE CLAIMS" in " ".join(sql.split()).upper()
     ]
     assert updates
     # Second positional arg is new_object_entity_id
@@ -1742,16 +1877,18 @@ async def test_link_claim_entities_alias_links_entity() -> None:
     doc_id = uuid.uuid4()
 
     pool = _make_link_pool(
-        claims=[{
-            "id": claim_id,
-            "subject_text": "Rust",
-            "object_text": "systems language",
-            "subject_entity_id": None,
-            "object_entity_id": None,
-            "source_document_ids": [doc_id],
-            "extraction_confidence": 0.80,
-            "metadata": {},
-        }],
+        claims=[
+            {
+                "id": claim_id,
+                "subject_text": "Rust",
+                "object_text": "systems language",
+                "subject_entity_id": None,
+                "object_entity_id": None,
+                "source_document_ids": [doc_id],
+                "extraction_confidence": 0.80,
+                "metadata": {},
+            }
+        ],
         mention_row=None,
         live_entity_row=None,
         name_row=None,
@@ -1776,16 +1913,18 @@ async def test_link_claim_entities_ambiguous_name_leaves_null() -> None:
     entity_b = uuid.uuid4()
 
     pool = _make_link_pool(
-        claims=[{
-            "id": claim_id,
-            "subject_text": "Apple",
-            "object_text": "Apple",
-            "subject_entity_id": None,
-            "object_entity_id": None,
-            "source_document_ids": [doc_id],
-            "extraction_confidence": 0.80,
-            "metadata": {},
-        }],
+        claims=[
+            {
+                "id": claim_id,
+                "subject_text": "Apple",
+                "object_text": "Apple",
+                "subject_entity_id": None,
+                "object_entity_id": None,
+                "source_document_ids": [doc_id],
+                "extraction_confidence": 0.80,
+                "metadata": {},
+            }
+        ],
         mention_row=None,
         live_entity_row=None,
         # Two distinct live entities match the same name → ambiguous.
@@ -1796,10 +1935,7 @@ async def test_link_claim_entities_ambiguous_name_leaves_null() -> None:
     assert counters["subject_linked"] == 0
     assert counters["object_linked"] == 0
     assert counters["claims_updated"] == 0
-    updates = [
-        sql for sql, _ in pool.executed
-        if "UPDATE CLAIMS" in " ".join(sql.split()).upper()
-    ]
+    updates = [sql for sql, _ in pool.executed if "UPDATE CLAIMS" in " ".join(sql.split()).upper()]
     assert updates == [], "ambiguous exact-name must not write a link"
 
 
@@ -1810,16 +1946,18 @@ async def test_link_claim_entities_no_match_leaves_null() -> None:
     doc_id = uuid.uuid4()
 
     pool = _make_link_pool(
-        claims=[{
-            "id": claim_id,
-            "subject_text": "completely unknown entity xyz",
-            "object_text": "another mystery entity",
-            "subject_entity_id": None,
-            "object_entity_id": None,
-            "source_document_ids": [doc_id],
-            "extraction_confidence": 0.70,
-            "metadata": {},
-        }],
+        claims=[
+            {
+                "id": claim_id,
+                "subject_text": "completely unknown entity xyz",
+                "object_text": "another mystery entity",
+                "subject_entity_id": None,
+                "object_entity_id": None,
+                "source_document_ids": [doc_id],
+                "extraction_confidence": 0.70,
+                "metadata": {},
+            }
+        ],
         mention_row=None,
         live_entity_row=None,
         name_row=None,
@@ -1832,10 +1970,7 @@ async def test_link_claim_entities_no_match_leaves_null() -> None:
     assert counters["object_linked"] == 0
     assert counters["claims_updated"] == 0
     # No UPDATE should have been issued
-    updates = [
-        sql for sql, _ in pool.executed
-        if "UPDATE CLAIMS" in " ".join(sql.split()).upper()
-    ]
+    updates = [sql for sql, _ in pool.executed if "UPDATE CLAIMS" in " ".join(sql.split()).upper()]
     assert updates == []
 
 
@@ -1862,16 +1997,18 @@ async def test_link_claim_entities_skips_low_embedding_distance() -> None:
     mock_emb.embed = AsyncMock(return_value=[[0.0] * 384])
 
     pool = _make_link_pool(
-        claims=[{
-            "id": claim_id,
-            "subject_text": "ambiguous entity",
-            "object_text": "other entity",
-            "subject_entity_id": None,
-            "object_entity_id": None,
-            "source_document_ids": [doc_id],
-            "extraction_confidence": 0.75,
-            "metadata": {},
-        }],
+        claims=[
+            {
+                "id": claim_id,
+                "subject_text": "ambiguous entity",
+                "object_text": "other entity",
+                "subject_entity_id": None,
+                "object_entity_id": None,
+                "source_document_ids": [doc_id],
+                "extraction_confidence": 0.75,
+                "metadata": {},
+            }
+        ],
         mention_row=None,
         live_entity_row=None,
         name_row=None,
@@ -1898,16 +2035,18 @@ async def test_link_claim_entities_embedding_high_similarity_links() -> None:
     mock_emb.embed = AsyncMock(return_value=[[0.0] * 384])
 
     pool = _make_link_pool(
-        claims=[{
-            "id": claim_id,
-            "subject_text": "rust-lang",
-            "object_text": "something",
-            "subject_entity_id": None,
-            "object_entity_id": None,
-            "source_document_ids": [doc_id],
-            "extraction_confidence": 0.80,
-            "metadata": {},
-        }],
+        claims=[
+            {
+                "id": claim_id,
+                "subject_text": "rust-lang",
+                "object_text": "something",
+                "subject_entity_id": None,
+                "object_entity_id": None,
+                "source_document_ids": [doc_id],
+                "extraction_confidence": 0.80,
+                "metadata": {},
+            }
+        ],
         mention_row=None,
         live_entity_row=None,
         name_row=None,
@@ -1929,16 +2068,18 @@ async def test_link_claim_entities_provenance_written_to_metadata() -> None:
     doc_id = uuid.uuid4()
 
     pool = _make_link_pool(
-        claims=[{
-            "id": claim_id,
-            "subject_text": "FastAPI",
-            "object_text": "web framework",
-            "subject_entity_id": None,
-            "object_entity_id": None,
-            "source_document_ids": [doc_id],
-            "extraction_confidence": 0.90,
-            "metadata": {},
-        }],
+        claims=[
+            {
+                "id": claim_id,
+                "subject_text": "FastAPI",
+                "object_text": "web framework",
+                "subject_entity_id": None,
+                "object_entity_id": None,
+                "source_document_ids": [doc_id],
+                "extraction_confidence": 0.90,
+                "metadata": {},
+            }
+        ],
         mention_row={"entity_id": entity_id},
         live_entity_row={"id": entity_id},
     )
@@ -1947,8 +2088,7 @@ async def test_link_claim_entities_provenance_written_to_metadata() -> None:
 
     # Verify the UPDATE was called with metadata JSON containing provenance
     updates = [
-        args for sql, args in pool.executed
-        if "UPDATE CLAIMS" in " ".join(sql.split()).upper()
+        args for sql, args in pool.executed if "UPDATE CLAIMS" in " ".join(sql.split()).upper()
     ]
     assert updates
     # Third positional arg ($3) is the metadata JSON string
@@ -2012,7 +2152,8 @@ async def test_resolve_entities_distinct_external_ids_do_not_merge() -> None:
     assert counters["merges_performed"] == 0
     assert counters["candidates_created"] == 0
     merge_inserts = [
-        s for s, _ in pool.executed
+        s
+        for s, _ in pool.executed
         if "INSERT INTO ENTITY_MERGE_EVENTS" in " ".join(s.split()).upper()
     ]
     assert merge_inserts == []

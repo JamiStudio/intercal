@@ -81,21 +81,13 @@ def _make_pool(
         ):
             return chunks or []
         # embed_chunks: existing embeddings check
-        if (
-            "from chunk_embeddings" in q
-            and "select chunk_id" in q
-            and "model" in q
-        ):
+        if "from chunk_embeddings" in q and "select chunk_id" in q and "model" in q:
             return existing_chunk_embeds or []
         # embed_claims: load claims
         if "from claims" in q and "normalized_text" in q:
             return claims or []
         # embed_claims: existing claim embeddings check
-        if (
-            "from claim_embeddings" in q
-            and "select claim_id" in q
-            and "model" in q
-        ):
+        if "from claim_embeddings" in q and "select claim_id" in q and "model" in q:
             return existing_claim_embeds or []
         return []
 
@@ -445,8 +437,17 @@ async def test_hybrid_search_results_have_required_fields() -> None:
     results = await hybrid_search(query="test", pool=pool, embeddings=emb)
     assert results
     r = results[0]
-    for field in ("chunk_id", "document_id", "chunk_index", "chunk_text", "rrf_score",
-                  "vector_rank", "fts_rank", "vector_distance", "fts_ts_rank"):
+    for field in (
+        "chunk_id",
+        "document_id",
+        "chunk_index",
+        "chunk_text",
+        "rrf_score",
+        "vector_rank",
+        "fts_rank",
+        "vector_distance",
+        "fts_ts_rank",
+    ):
         assert field in r, f"Missing field: {field}"
 
 
@@ -539,13 +540,11 @@ async def test_hybrid_search_custom_weights() -> None:
 
     # vector-only result with high vector_weight
     res_vec = await hybrid_search(
-        query="test", pool=pool_vec, embeddings=emb,
-        vector_weight=1.0, fts_weight=0.0
+        query="test", pool=pool_vec, embeddings=emb, vector_weight=1.0, fts_weight=0.0
     )
     # fts-only result with high fts_weight
     res_fts = await hybrid_search(
-        query="test", pool=pool_fts, embeddings=emb,
-        vector_weight=0.0, fts_weight=1.0
+        query="test", pool=pool_fts, embeddings=emb, vector_weight=0.0, fts_weight=1.0
     )
     # Both should still return results (non-zero score from their respective leg)
     assert res_vec and res_fts

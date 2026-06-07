@@ -79,8 +79,10 @@ async def main() -> None:
         counters = await derive_relationships(claim_id=cid, pool=pool)
         total_written += counters["relationships_written"]
         total_skipped += counters["relationships_skipped"]
-        print(f"    claim {cid[:8]}... written={counters['relationships_written']}"
-              f"  skipped={counters['relationships_skipped']}")
+        print(
+            f"    claim {cid[:8]}... written={counters['relationships_written']}"
+            f"  skipped={counters['relationships_skipped']}"
+        )
 
     rels_after = await pool.fetchval("SELECT count(*) FROM relationships")
     print()
@@ -110,7 +112,7 @@ async def main() -> None:
         print(f"    type={rel_row['type_id']}")
         print(f"    subject={str(rel_row['subject_entity_id'])[:8]}...")
         print(f"    object={str(rel_row['object_entity_id'])[:8]}...")
-        print(f"    claim_ids={[str(c)[:8]+'...' for c in (rel_row['claim_ids'] or [])]}")
+        print(f"    claim_ids={[str(c)[:8] + '...' for c in (rel_row['claim_ids'] or [])]}")
         print(f"    recorded_at={rel_row['recorded_at']}")
         if rel_row["claim_ids"] and len(rel_row["claim_ids"]) > 0:
             print("  [PASS] Provenance: claim_ids set on relationship")
@@ -131,16 +133,16 @@ async def main() -> None:
         fv_skipped += counters["versions_skipped"]
 
     fv_after = await pool.fetchval("SELECT count(*) FROM fact_versions")
-    fv_current = await pool.fetchval(
-        "SELECT count(*) FROM fact_versions WHERE is_current = true"
-    )
+    fv_current = await pool.fetchval("SELECT count(*) FROM fact_versions WHERE is_current = true")
     fv_superseded = await pool.fetchval(
         "SELECT count(*) FROM fact_versions WHERE is_current = false"
     )
 
     print(f"  write_fact_versions totals: written={fv_written}  skipped={fv_skipped}")
-    print(f"  fact_versions in DB: {fv_before} -> {fv_after} "
-          f"(current={fv_current}, superseded={fv_superseded})")
+    print(
+        f"  fact_versions in DB: {fv_before} -> {fv_after} "
+        f"(current={fv_current}, superseded={fv_superseded})"
+    )
 
     if int(fv_after) >= 1:
         print(f"  [PASS] >=1 fact version in DB ({fv_after} total)")
@@ -177,10 +179,12 @@ async def main() -> None:
         print(f"    payload.external_ids={payload.get('external_ids')}")
         print(f"    payload.active_relationship_count={payload.get('active_relationship_count')}")
 
-        if (sample_fv["valid_from"] is not None
-                and sample_fv["recorded_at"] is not None
-                and sample_fv["is_current"] is True
-                and sample_fv["superseded_by_id"] is None):
+        if (
+            sample_fv["valid_from"] is not None
+            and sample_fv["recorded_at"] is not None
+            and sample_fv["is_current"] is True
+            and sample_fv["superseded_by_id"] is None
+        ):
             print("  [PASS] Bitemporal columns correct on current version")
         else:
             print("  [FAIL] Bitemporal columns incorrect on current version")
@@ -206,47 +210,60 @@ async def main() -> None:
         all_passed = False
 
     # write_fact_versions again — all should be skipped (payload unchanged)
-    fv_current_before2 = int(await pool.fetchval(
-        "SELECT count(*) FROM fact_versions WHERE is_current = true"
-    ))
+    fv_current_before2 = int(
+        await pool.fetchval("SELECT count(*) FROM fact_versions WHERE is_current = true")
+    )
     for row in entity_rows:
         await write_fact_versions(entity_id=str(row["id"]), pool=pool)
-    fv_current_after2 = int(await pool.fetchval(
-        "SELECT count(*) FROM fact_versions WHERE is_current = true"
-    ))
+    fv_current_after2 = int(
+        await pool.fetchval("SELECT count(*) FROM fact_versions WHERE is_current = true")
+    )
     fv_total_after2 = int(await pool.fetchval("SELECT count(*) FROM fact_versions"))
     if fv_current_after2 == fv_current_before2:
-        print(f"  [PASS] write_fact_versions idempotent: "
-              f"{fv_current_before2} -> {fv_current_after2} current versions (no change)")
+        print(
+            f"  [PASS] write_fact_versions idempotent: "
+            f"{fv_current_before2} -> {fv_current_after2} current versions (no change)"
+        )
     else:
-        print(f"  [FAIL] write_fact_versions not idempotent: "
-              f"current versions changed {fv_current_before2} -> {fv_current_after2}")
+        print(
+            f"  [FAIL] write_fact_versions not idempotent: "
+            f"current versions changed {fv_current_before2} -> {fv_current_after2}"
+        )
         all_passed = False
 
     # ── Step 4: Append-only proof ─────────────────────────────────────────────
     print()
     print("  Append-only proof (no fact_versions rows deleted)...")
     # The superseded rows (if any) must still exist with is_current=false
-    fv_superseded_after = int(await pool.fetchval(
-        "SELECT count(*) FROM fact_versions WHERE is_current = false"
-    ))
+    fv_superseded_after = int(
+        await pool.fetchval("SELECT count(*) FROM fact_versions WHERE is_current = false")
+    )
     # Check that no superseded row is missing superseded_by_id
-    orphan_superseded = int(await pool.fetchval(
-        "SELECT count(*) FROM fact_versions WHERE is_current = false AND superseded_by_id IS NULL"
-    ))
+    orphan_superseded = int(
+        await pool.fetchval(
+            "SELECT count(*) FROM fact_versions "
+            "WHERE is_current = false AND superseded_by_id IS NULL"
+        )
+    )
     if orphan_superseded == 0:
-        print(f"  [PASS] Append-only: {fv_superseded_after} superseded version(s), "
-              f"all have superseded_by_id set")
+        print(
+            f"  [PASS] Append-only: {fv_superseded_after} superseded version(s), "
+            f"all have superseded_by_id set"
+        )
     else:
-        print(f"  [WARN] {orphan_superseded} superseded version(s) without superseded_by_id "
-              f"(expected only if superseded by external process)")
+        print(
+            f"  [WARN] {orphan_superseded} superseded version(s) without superseded_by_id "
+            f"(expected only if superseded by external process)"
+        )
 
     # Total fact_versions must not have decreased
     if fv_total_after2 >= int(fv_after):
         print(f"  [PASS] Fact versions total non-decreasing: {fv_after} -> {fv_total_after2}")
     else:
-        print(f"  [FAIL] Fact versions total decreased: {fv_after} -> {fv_total_after2} "
-              f"(append-only violated)")
+        print(
+            f"  [FAIL] Fact versions total decreased: {fv_after} -> {fv_total_after2} "
+            f"(append-only violated)"
+        )
         all_passed = False
 
     # ── Final ─────────────────────────────────────────────────────────────────

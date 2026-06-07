@@ -97,7 +97,11 @@ CHUNK_ID = str(uuid.uuid4())
 def test_mentions_schema_has_required_fields() -> None:
     props = MENTIONS_SCHEMA["properties"]["mentions"]["items"]["properties"]
     required_fields = (
-        "text_span", "proposed_type", "char_offset_start", "char_offset_end", "confidence"
+        "text_span",
+        "proposed_type",
+        "char_offset_start",
+        "char_offset_end",
+        "confidence",
     )
     for field in required_fields:
         assert field in props
@@ -926,9 +930,7 @@ async def test_extract_claims_token_usage_accumulated() -> None:
         schema: dict[str, Any], prompt: str, **kw: Any
     ) -> StructuredResult:
         call_n["n"] += 1
-        return StructuredResult(
-            data=claim_a, model="test", input_tokens=20, output_tokens=10
-        )
+        return StructuredResult(data=claim_a, model="test", input_tokens=20, output_tokens=10)
 
     llm.extract_structured = _extract_structured
 
@@ -1031,9 +1033,7 @@ async def test_extract_claims_source_spans_in_raw_spans() -> None:
 
 def test_anchor_span_exact_in_region() -> None:
     cleaned = "x" * 100 + "Sam Altman leads OpenAI."
-    res = anchor_span(
-        "Sam Altman", cleaned_text=cleaned, region_start=100, region_end=len(cleaned)
-    )
+    res = anchor_span("Sam Altman", cleaned_text=cleaned, region_start=100, region_end=len(cleaned))
     assert res is not None
     start, end = res
     assert cleaned[start:end] == "Sam Altman"
@@ -1057,8 +1057,7 @@ def test_anchor_span_whitespace_flexible() -> None:
 def test_anchor_span_returns_none_when_absent() -> None:
     cleaned = "Nothing relevant here at all."
     assert (
-        anchor_span("Totally Missing", cleaned_text=cleaned, region_start=0, region_end=29)
-        is None
+        anchor_span("Totally Missing", cleaned_text=cleaned, region_start=0, region_end=29) is None
     )
 
 
@@ -1080,14 +1079,20 @@ def test_anchor_span_occupied_advances_to_next_occurrence() -> None:
     cleaned = "Sam Altman met Sam Altman."
     taken: list[tuple[int, int]] = []
     first = anchor_span(
-        "Sam Altman", cleaned_text=cleaned, region_start=0, region_end=len(cleaned),
+        "Sam Altman",
+        cleaned_text=cleaned,
+        region_start=0,
+        region_end=len(cleaned),
         occupied=taken,
     )
     assert first is not None
     assert first == (0, 10)
     taken.append(first)
     second = anchor_span(
-        "Sam Altman", cleaned_text=cleaned, region_start=0, region_end=len(cleaned),
+        "Sam Altman",
+        cleaned_text=cleaned,
+        region_start=0,
+        region_end=len(cleaned),
         occupied=taken,
     )
     assert second is not None
@@ -1179,8 +1184,7 @@ async def test_extract_mentions_anchors_offsets_across_whitespace_drift() -> Non
     assert inserted, "expected at least one rule-based mention (Sam Altman)"
     for text_span, start, end in inserted:
         assert cleaned[start:end] == text_span, (
-            f"offset drift: cleaned_text[{start}:{end}]="
-            f"{cleaned[start:end]!r} != {text_span!r}"
+            f"offset drift: cleaned_text[{start}:{end}]={cleaned[start:end]!r} != {text_span!r}"
         )
 
 

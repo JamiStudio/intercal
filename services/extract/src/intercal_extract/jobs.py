@@ -460,9 +460,7 @@ async def extract_mentions(
                         {
                             "text_span": str(m["text_span"])[:512],
                             "proposed_type": str(m.get("proposed_type", "CONCEPT")),
-                            "char_offset_start": safe_int_offset(
-                                m.get("char_offset_start")
-                            ),
+                            "char_offset_start": safe_int_offset(m.get("char_offset_start")),
                             "char_offset_end": safe_int_offset(m.get("char_offset_end")),
                             "confidence": clamp_confidence(m.get("confidence", 0.7)),
                             "extractor": EXTRACTOR_LLM,
@@ -494,9 +492,7 @@ async def extract_mentions(
         anchored_by_text: dict[str, list[tuple[int, int]]] = {}
         ordered = sorted(
             merged.values(),
-            key=lambda c: (
-                c["char_offset_start"] if c["char_offset_start"] is not None else 1 << 30
-            ),
+            key=lambda c: c["char_offset_start"] if c["char_offset_start"] is not None else 1 << 30,
         )
         for cand in ordered:
             # Anchor the mention's verbatim text within this chunk's region of
@@ -728,9 +724,7 @@ async def extract_claims(
                     raw.get("subject_text") and raw.get("predicate") and raw.get("object_text")
                 )
                 if not has_req:
-                    _log.debug(
-                        "extract_claims: skipping claim missing required fields: %s", raw
-                    )
+                    _log.debug("extract_claims: skipping claim missing required fields: %s", raw)
                     continue
                 all_validated.append((raw, dict(chunk)))
         except Exception as llm_exc:
@@ -926,8 +920,7 @@ async def resolve_entities(
         NotImplementedError: Entity resolution is Plan 02 W6 scope.
     """
     raise NotImplementedError(
-        "Plan 02 W6 — resolve_entities: conservative entity resolution "
-        "not yet implemented."
+        "Plan 02 W6 — resolve_entities: conservative entity resolution not yet implemented."
     )
 
 
@@ -1441,9 +1434,7 @@ async def hybrid_search(
                     vector_sql, vec_literal, embeddings.model, pool_size_hint
                 )
     else:
-        vector_rows = await pool.fetch(
-            vector_sql, vec_literal, embeddings.model, pool_size_hint
-        )
+        vector_rows = await pool.fetch(vector_sql, vec_literal, embeddings.model, pool_size_hint)
 
     # ── 2. Lexical (FTS) leg ──────────────────────────────────────────────────
     # Convert query to tsquery using plainto_tsquery for natural-language input.
@@ -1533,8 +1524,8 @@ def _mentions_prompt(chunk_text: str) -> str:
         "  char_offset_start: 0-based character offset of text_span start in the input text\n"
         "  char_offset_end: exclusive end character offset\n"
         "  confidence: a float from 0.0 to 1.0\n\n"
-        "Return ONLY a JSON object with key \"mentions\" containing the array.\n"
-        "If no entities are found, return {\"mentions\": []}.\n\n"
+        'Return ONLY a JSON object with key "mentions" containing the array.\n'
+        'If no entities are found, return {"mentions": []}.\n\n'
         f"Text:\n{chunk_text}"
     )
 
@@ -1568,9 +1559,9 @@ def _claims_prompt(chunk_text: str) -> str:
         "  char_offset_end: exclusive end character offset of that evidence span\n\n"
         "The char offsets must bracket a VERBATIM substring of the text below that supports "
         "the claim, so the evidence can be traced back to the source.\n"
-        "Return ONLY a JSON object with key \"claims\" containing the array.\n"
+        'Return ONLY a JSON object with key "claims" containing the array.\n'
         "If the text states no extractable facts (e.g. it is metadata or boilerplate), "
-        "return {\"claims\": []}.\n\n"
+        'return {"claims": []}.\n\n'
         f"Text:\n{chunk_text}"
     )
 

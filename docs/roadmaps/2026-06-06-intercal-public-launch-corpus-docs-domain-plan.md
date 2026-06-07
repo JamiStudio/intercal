@@ -1,7 +1,7 @@
 # Public Launch, Corpus, Docs, And Domain Implementation Plan
 
 Date: 2026-06-06
-Status: [ ] Active draft
+Status: [x] Complete — final closeout verified 2026-06-07
 Source reports: `docs/research/2026-05-21-intercal-foundation-report.md`, `docs/research/2026-06-04-intercal-revisit-audit-and-dev-environment.md`, `docs/research/2026-06-06-baseline-knowledge-seeding.md`, decisions `docs/decisions/0001-foundation-stack.md` and `docs/decisions/0002-final-hosting-topology.md`, Plans 03, 04, 06, and 07
 Owner: Main orchestration agent
 Surface: broad AI-history corpus backfill, public knowledge experience, docs/Mintlify readiness, Intercal marketing/AI SEO, Vercel/Cloudflare domain routing
@@ -1661,6 +1661,18 @@ Final closeout dispatch note:
   ladder where surfaces exist, report unavailable commands or route/tool gaps precisely, and commit
   only if a real closeout issue requires a narrow fix.
 
+Final closeout result:
+
+- 2026-06-07T02:36:00-04:00 — Final verification found and fixed two closeout issues before
+  accepting the launch plan as complete: Python files had Ruff formatting drift, and `verify_claim`
+  point-in-time retrieval treated claims with unknown `valid_from` as valid for every historical
+  `as_of_date`. The shared query layer now only lets an undated backfilled claim support an
+  `as_of_date` request when at least one backing source document was published by that date. This
+  preserves historical backfill usefulness without inventing support before cited evidence existed.
+  The packaged MCP smoke script still cannot run directly from the repo root because
+  `@modelcontextprotocol/sdk` is package-scoped; direct Streamable HTTP MCP initialize, tools/list,
+  and `search_evidence` smokes passed on the official domain.
+
 ## Final Verification And Closeout
 
 - `pnpm format:check`
@@ -1687,14 +1699,14 @@ Final closeout dispatch note:
 
 ## Acceptance Criteria
 
-- [ ] Broad GPT-era AI-history backfill exists and is continuously refreshable.
-- [ ] Every public fact traces to source documents, claims, evidence, and fact versions or displays an explicit unknown/coverage state.
-- [ ] REST, SDK, and MCP return useful deltas and claim verification over the backfilled corpus.
+- [x] Broad GPT-era AI-history backfill exists and is continuously refreshable over the implemented source catalog and quality gates; this is not a claim of full-web saturation.
+- [x] Every public fact traces to source documents, claims, evidence, and fact versions or displays an explicit unknown/coverage state.
+- [x] REST, SDK, and MCP return useful deltas and claim verification over the backfilled corpus, including conservative point-in-time `verify_claim` behavior for undated backfilled evidence.
 - [x] `intercal.jami.studio` serves the Intercal public product surface, docs, REST, OpenAPI, and MCP from the accepted Vercel topology.
-- [ ] Docs are ready for Mintlify or same-origin rendering and include `llms.txt`, `llms-full.txt`, copyable page text, and verified examples.
-- [ ] Marketing and AI SEO surfaces are crawlable, canonical, and backed by actual product behavior.
+- [x] Docs are ready for Mintlify or same-origin rendering and include `llms.txt`, `llms-full.txt`, copyable page text, and verified examples.
+- [x] Marketing and AI SEO surfaces are crawlable, canonical, and backed by actual product behavior.
 - [x] Cloudflare DNS and R2 are used where they help now; compute migration remains an explicit future proof, not a current blocker. R2 bucket proof is verified; fresh object IO smoke remains separate.
-- [ ] Durable docs, decisions, and runbooks reflect the real deployed behavior.
+- [x] Durable docs, decisions, and runbooks reflect the real deployed behavior, including Vercel-specific front-door assumptions, verified R2 bucket metadata, and the future-only Cloudflare compute proof.
 
 ## Implementation Order
 

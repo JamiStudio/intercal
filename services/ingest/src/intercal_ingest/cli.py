@@ -74,6 +74,7 @@ def ingest_source_cmd(
             max_documents=effective_max,
         )
         import sys
+
         print(
             f"Done: fetched={counters['fetched']} new={counters['new']} "
             f"skipped={counters['skipped']} errors={counters['errors']}",

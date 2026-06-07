@@ -59,9 +59,11 @@
  *       safe failure mode; a false "supported" would be the substrate asserting something untrue.
  *
  * POINT-IN-TIME (`as_of_date`): evaluated against the historical world state as of that date.
- * Historical corpus backfills may be recorded after the event they describe, so verification filters
- * on valid time (`valid_from <= as_of` when set, and `valid_until` open or after the date), not the
- * row insertion time. Without `as_of_date` we verify against the current valid state.
+ * Historical corpus backfills may be recorded after the event they describe, so verification
+ * prefers valid time (`valid_from <= as_of` when set) over row insertion time. When `valid_from` is
+ * unknown, the conservative fallback requires at least one backing source document published by the
+ * requested date; otherwise an undated backfill would be treated as true for all history. Without
+ * `as_of_date` we verify against the current valid state.
  *
  * TOKEN BUDGET: the returned evidence is bounded to `token_budget` exactly like W5 — citations are
  * ranked most-relevant-first and trimmed so the response stays within budget; the verdict and
@@ -466,11 +468,24 @@ export async function buildVerification(
 
   if (asOf) {
     // Historical-corpus query time: the claim was valid in the world at `as_of`.
-    // Do not filter on `created_at`; backfilled evidence can be recorded after the historical
-    // date it describes, and filtering by learn-time would make real backfills unusable for
-    // "was this true as of date X?" checks.
+    // Prefer explicit valid-world time. If the extractor did not recover a valid_from date, fall
+    // back only to source publication time; treating unknown valid_from as open-start would make a
+    // 2026 backfill support a 2020 verification request.
     q = q
-      .where((eb) => eb.or([eb('valid_from', 'is', null), eb('valid_from', '<=', asOf)]))
+      .where((eb) =>
+        eb.or([
+          eb('valid_from', '<=', asOf),
+          eb.and([
+            eb('valid_from', 'is', null),
+            sql<boolean>`exists (
+              select 1
+              from source_documents sd
+              where sd.id = any(claims.source_document_ids)
+                and sd.published_at <= ${asOf}
+            )`,
+          ]),
+        ]),
+      )
       .where((eb) => eb.or([eb('valid_until', 'is', null), eb('valid_until', '>', asOf)]));
   }
 

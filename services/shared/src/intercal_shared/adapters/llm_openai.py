@@ -162,6 +162,4 @@ class OpenAILlmAdapter:
                 output_tokens=response.usage.completion_tokens if response.usage else None,
             )
 
-        return await run_structured_with_retries(
-            attempt=_attempt, schema=schema, provider="OpenAI"
-        )
+        return await run_structured_with_retries(attempt=_attempt, schema=schema, provider="OpenAI")

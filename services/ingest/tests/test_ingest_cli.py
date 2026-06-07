@@ -45,9 +45,7 @@ async def test_normalize_document_pool_none_raises_attribute_error() -> None:
     import uuid as _uuid
 
     with pytest.raises((AttributeError, TypeError)):
-        await normalize_document(
-            document_id=str(_uuid.uuid4()), pool=None, storage=None
-        )
+        await normalize_document(document_id=str(_uuid.uuid4()), pool=None, storage=None)
 
 
 @pytest.mark.asyncio

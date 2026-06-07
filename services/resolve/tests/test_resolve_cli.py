@@ -29,9 +29,7 @@ async def test_resolve_entities_is_implemented() -> None:
     try:
         await resolve_entities(pool=None)
     except NotImplementedError as exc:
-        raise AssertionError(
-            "resolve_entities should be implemented"
-        ) from exc
+        raise AssertionError("resolve_entities should be implemented") from exc
     except Exception:
         pass  # AttributeError on None pool, etc. — expected
 

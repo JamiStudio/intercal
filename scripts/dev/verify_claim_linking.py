@@ -62,10 +62,7 @@ async def main() -> None:
 
     print("  Before:")
     print(f"    claims (active)={claims_total}  entities={entities_total}")
-    print(
-        f"    claims with >=1 NULL end={unlinked_before}"
-        f"  fully linked={both_linked_before}"
-    )
+    print(f"    claims with >=1 NULL end={unlinked_before}  fully linked={both_linked_before}")
     print(f"    relationships={rels_before}")
     print()
 
@@ -88,9 +85,7 @@ async def main() -> None:
     # Embeddings pass (if adapter available).
     try:
         emb = make_embeddings(cfg)
-        emb_counters = await link_claim_entities(
-            pool=pool, embeddings=emb, batch_size=500
-        )
+        emb_counters = await link_claim_entities(pool=pool, embeddings=emb, batch_size=500)
         print(f"  link_claim_entities (emb): {emb_counters}")
     except Exception as exc:
         print(f"  [INFO] Embeddings pass skipped: {exc}")
@@ -146,10 +141,7 @@ async def main() -> None:
           AND object_entity_id IS NOT NULL
         """
     )
-    print(
-        f"  Running derive_relationships on {len(linked_claims)}"
-        " fully-linked claim(s)..."
-    )
+    print(f"  Running derive_relationships on {len(linked_claims)} fully-linked claim(s)...")
 
     total_written = 0
     total_skipped = 0
@@ -216,10 +208,7 @@ async def main() -> None:
         )
     else:
         delta = rels_after_idem - rels_before_idem
-        print(
-            f"  [FAIL] derive_relationships not idempotent: "
-            f"+{delta} new rows on re-run"
-        )
+        print(f"  [FAIL] derive_relationships not idempotent: +{delta} new rows on re-run")
         all_passed = False
 
     # ── Final ─────────────────────────────────────────────────────────────────

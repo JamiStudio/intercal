@@ -65,9 +65,7 @@ def resolve_entities_cmd(
 
 @app.command("link-claim-entities")
 def link_claim_entities_cmd(
-    batch_size: int = typer.Option(
-        200, "--batch-size", help="Max claims to process per run."
-    ),
+    batch_size: int = typer.Option(200, "--batch-size", help="Max claims to process per run."),
     use_embeddings: bool = typer.Option(
         True,
         "--embeddings/--no-embeddings",

@@ -37,9 +37,7 @@ async def main() -> None:
                 "Set VERTEX_PROJECT (or GCLOUD_PROJECT_ID) in .env to test Vertex mode."
             )
         else:
-            print(
-                f"  project={cfg.resolved_vertex_project!r}  location={cfg.vertex_location!r}"
-            )
+            print(f"  project={cfg.resolved_vertex_project!r}  location={cfg.vertex_location!r}")
             await _test_llm_vertex(cfg)
     elif cfg.llm_provider == "gemini":
         if not cfg.gemini_api_key:

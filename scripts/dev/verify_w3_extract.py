@@ -23,7 +23,7 @@ from __future__ import annotations
 import asyncio
 import sys
 
-MAX_DOCS = 2           # cap: only process a few documents
+MAX_DOCS = 2  # cap: only process a few documents
 MAX_CHUNKS_PER_DOC = 2  # cap: only a couple of chunks per doc
 
 
@@ -71,8 +71,10 @@ async def main() -> None:
 
     for row in rows:
         doc_id = str(row["id"])
-        print(f"  -- Document {doc_id} (title={row['title']!r}, lang={row['language']!r},"
-              f" chunks={row['chunk_count']}) --")
+        print(
+            f"  -- Document {doc_id} (title={row['title']!r}, lang={row['language']!r},"
+            f" chunks={row['chunk_count']}) --"
+        )
 
         # ── extract_mentions ──────────────────────────────────────────────────
         try:

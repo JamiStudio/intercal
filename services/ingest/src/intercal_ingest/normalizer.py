@@ -101,8 +101,24 @@ class _HtmlStripper(html.parser.HTMLParser):
             self._skip_depth += 1
         # Insert a space before block-level elements so words don't fuse.
         if tag in {
-            "p", "br", "li", "dt", "dd", "h1", "h2", "h3", "h4", "h5", "h6",
-            "div", "section", "article", "blockquote", "tr", "th", "td",
+            "p",
+            "br",
+            "li",
+            "dt",
+            "dd",
+            "h1",
+            "h2",
+            "h3",
+            "h4",
+            "h5",
+            "h6",
+            "div",
+            "section",
+            "article",
+            "blockquote",
+            "tr",
+            "th",
+            "td",
         }:
             self._parts.append(" ")
 
@@ -149,10 +165,27 @@ def _flatten_json(raw: str) -> str:
 
 _JSON_SKIP_KEYS: frozenset[str] = frozenset(
     {
-        "id", "url", "uri", "href", "link", "type", "format",
-        "timestamp", "date", "created", "updated", "modified", "revision",
-        "namespace", "ns", "pageid", "rcid", "old_revid", "revid",
-        "tag_hidden", "anon",
+        "id",
+        "url",
+        "uri",
+        "href",
+        "link",
+        "type",
+        "format",
+        "timestamp",
+        "date",
+        "created",
+        "updated",
+        "modified",
+        "revision",
+        "namespace",
+        "ns",
+        "pageid",
+        "rcid",
+        "old_revid",
+        "revid",
+        "tag_hidden",
+        "anon",
     }
 )
 
@@ -248,15 +281,15 @@ def normalize_text(raw: str, content_type: str = "text/plain") -> str:
 # Unicode block ranges for script heuristics.
 # Each entry: (start_codepoint, end_codepoint, bcp47_tag)
 _SCRIPT_RANGES: list[tuple[int, int, str]] = [
-    (0x4E00, 0x9FFF, "zh"),   # CJK Unified Ideographs (Chinese/Japanese/Korean)
-    (0x3040, 0x30FF, "ja"),   # Hiragana + Katakana
-    (0xAC00, 0xD7A3, "ko"),   # Hangul syllables
-    (0x0600, 0x06FF, "ar"),   # Arabic
-    (0x0400, 0x04FF, "ru"),   # Cyrillic
-    (0x0900, 0x097F, "hi"),   # Devanagari
-    (0x0370, 0x03FF, "el"),   # Greek
-    (0x0590, 0x05FF, "he"),   # Hebrew
-    (0x0E00, 0x0E7F, "th"),   # Thai
+    (0x4E00, 0x9FFF, "zh"),  # CJK Unified Ideographs (Chinese/Japanese/Korean)
+    (0x3040, 0x30FF, "ja"),  # Hiragana + Katakana
+    (0xAC00, 0xD7A3, "ko"),  # Hangul syllables
+    (0x0600, 0x06FF, "ar"),  # Arabic
+    (0x0400, 0x04FF, "ru"),  # Cyrillic
+    (0x0900, 0x097F, "hi"),  # Devanagari
+    (0x0370, 0x03FF, "el"),  # Greek
+    (0x0590, 0x05FF, "he"),  # Hebrew
+    (0x0E00, 0x0E7F, "th"),  # Thai
 ]
 
 # Minimum fraction of characters in a non-Latin script to trigger detection.
@@ -311,9 +344,7 @@ _SENTENCE_END: re.Pattern[str] = re.compile(r"(?<=[.!?])\s+")
 _WHITESPACE_RUN: re.Pattern[str] = re.compile(r"\s+")
 
 
-def _hard_split_segment(
-    start: int, end: int, body: str, limit: int
-) -> list[tuple[int, int, str]]:
+def _hard_split_segment(start: int, end: int, body: str, limit: int) -> list[tuple[int, int, str]]:
     """Split one (start, end, body) segment that exceeds *limit* characters.
 
     A single "sentence" can be longer than ``chunk_size`` — e.g. log-style or

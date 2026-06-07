@@ -133,8 +133,7 @@ class Settings(BaseSettings):
     ingest_max_docs_per_run: int = Field(
         default=200,
         description=(
-            "Hard upper bound on documents ingested per scheduled run "
-            "(INGEST_MAX_DOCS_PER_RUN)."
+            "Hard upper bound on documents ingested per scheduled run (INGEST_MAX_DOCS_PER_RUN)."
         ),
     )
     extract_only_changed: bool = Field(

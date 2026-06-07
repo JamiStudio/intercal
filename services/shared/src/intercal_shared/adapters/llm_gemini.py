@@ -268,6 +268,4 @@ class GeminiLlmAdapter:
                 output_tokens=output_tokens,
             )
 
-        return await run_structured_with_retries(
-            attempt=_attempt, schema=schema, provider=mode
-        )
+        return await run_structured_with_retries(attempt=_attempt, schema=schema, provider=mode)

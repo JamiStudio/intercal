@@ -38,7 +38,7 @@ _log = logging.getLogger(__name__)
 # Conservative bias: the MERGE threshold is tight; anything ambiguous lands
 # in needs_review rather than being silently merged.  False non-merges are
 # acceptable; false merges are data corruption (AGENTS.md).
-COSINE_MERGE_THRESHOLD = 0.15   # distance ≤ this → high-confidence merge candidate
+COSINE_MERGE_THRESHOLD = 0.15  # distance ≤ this → high-confidence merge candidate
 COSINE_REVIEW_THRESHOLD = 0.40  # distance ≤ this → needs_review; above → no candidate
 
 # Minimum mention extraction_confidence to attempt resolution.
@@ -92,63 +92,116 @@ MIN_CLAIM_CONFIDENCE = 0.50
 # Order matters: more-specific rules listed first.
 _PREDICATE_TO_TYPE: list[tuple[list[str], str]] = [
     # Person ↔ role / office
-    (["holds_role", "holds role", "ceo", "cto", "coo", "vp", "president", "director",
-      "appointed", "serves as", "named as", "role of"],
-     "person_holds_role"),
-    (["holds_office", "holds office", "secretary", "minister", "commissioner",
-      "governor", "senator", "representative", "chancellor", "prime minister"],
-     "person_holds_office"),
+    (
+        [
+            "holds_role",
+            "holds role",
+            "ceo",
+            "cto",
+            "coo",
+            "vp",
+            "president",
+            "director",
+            "appointed",
+            "serves as",
+            "named as",
+            "role of",
+        ],
+        "person_holds_role",
+    ),
+    (
+        [
+            "holds_office",
+            "holds office",
+            "secretary",
+            "minister",
+            "commissioner",
+            "governor",
+            "senator",
+            "representative",
+            "chancellor",
+            "prime minister",
+        ],
+        "person_holds_office",
+    ),
     # Person ↔ place (birth)
-    (["born_in", "born in", "birthplace", "native of"],
-     "person_born_in"),
+    (["born_in", "born in", "birthplace", "native of"], "person_born_in"),
     # Organization ↔ person (employment)
-    (["employs", "employed by", "works for", "works at", "member of staff",
-      "employee", "hired", "staff"],
-     "organization_employs_person"),
+    (
+        [
+            "employs",
+            "employed by",
+            "works for",
+            "works at",
+            "member of staff",
+            "employee",
+            "hired",
+            "staff",
+        ],
+        "organization_employs_person",
+    ),
     # Organization ↔ product / artifact
-    (["owns", "developed", "created", "built", "maintains", "launched", "released",
-      "produces", "owns_product"],
-     "organization_owns_product"),
+    (
+        [
+            "owns",
+            "developed",
+            "created",
+            "built",
+            "maintains",
+            "launched",
+            "released",
+            "produces",
+            "owns_product",
+        ],
+        "organization_owns_product",
+    ),
     # Organization ↔ artifact (publication)
-    (["published", "released", "announced", "organization_published"],
-     "organization_published_artifact"),
+    (
+        ["published", "released", "announced", "organization_published"],
+        "organization_published_artifact",
+    ),
     # Person ↔ artifact (authorship). "contributed"/"committed"/"submitted" map
     # here: a contributor authored/co-authored the artifact (PR, commit, patch) —
     # the seeded type is "authored or co-authored a technical artifact", so this
     # is a semantic match, not a fabrication.
-    (["authored", "wrote", "co-authored", "created by", "person_authored",
-      "contributed", "contributor", "committed", "submitted"],
-     "person_authored_artifact"),
+    (
+        [
+            "authored",
+            "wrote",
+            "co-authored",
+            "created by",
+            "person_authored",
+            "contributed",
+            "contributor",
+            "committed",
+            "submitted",
+        ],
+        "person_authored_artifact",
+    ),
     # Organization ↔ organization (subsidiary / acquisition / merger)
-    (["subsidiary", "subsidiary_of", "division of", "owned by"],
-     "organization_subsidiary_of"),
-    (["acquired", "acquisition", "bought", "purchased"],
-     "company_acquired_company"),
-    (["merged", "merger", "merged_with"],
-     "company_merged_with_company"),
+    (["subsidiary", "subsidiary_of", "division of", "owned by"], "organization_subsidiary_of"),
+    (["acquired", "acquisition", "bought", "purchased"], "company_acquired_company"),
+    (["merged", "merger", "merged_with"], "company_merged_with_company"),
     # Organization ↔ place (HQ / location)
-    (["headquartered", "hq", "based in", "located in", "located_in",
-      "offices in", "is located"],
-     "organization_headquartered_in"),
+    (
+        ["headquartered", "hq", "based in", "located in", "located_in", "offices in", "is located"],
+        "organization_headquartered_in",
+    ),
     # Legislation
-    (["amends", "supersedes", "amends_law", "replaces law"],
-     "law_amends_law"),
-    (["enacted", "enacted_by", "jurisdiction_enacted"],
-     "jurisdiction_enacted_legislation"),
+    (["amends", "supersedes", "amends_law", "replaces law"], "law_amends_law"),
+    (["enacted", "enacted_by", "jurisdiction_enacted"], "jurisdiction_enacted_legislation"),
     # Event ↔ place
-    (["occurred in", "took place in", "event_occurred"],
-     "event_occurred_in_place"),
+    (["occurred in", "took place in", "event_occurred"], "event_occurred_in_place"),
     # Source / provenance
-    (["reported", "stated", "claimed", "reported_claim", "source_reported"],
-     "source_reported_claim"),
+    (
+        ["reported", "stated", "claimed", "reported_claim", "source_reported"],
+        "source_reported_claim",
+    ),
     # Concept
-    (["instance of", "is a", "is_a", "type of", "entity_instance"],
-     "entity_instance_of_concept"),
-    (["related to", "concept_related"],
-     "concept_related_to_concept"),
+    (["instance of", "is a", "is_a", "type of", "entity_instance"], "entity_instance_of_concept"),
+    (["related to", "concept_related"], "concept_related_to_concept"),
     # Paper citations
-    (["cites", "cited", "references", "paper_cites"],
-     "paper_cites_paper"),
+    (["cites", "cited", "references", "paper_cites"], "paper_cites_paper"),
 ]
 
 
@@ -588,9 +641,9 @@ async def _perform_merge(
         "type_id": src_row["type_id"],
         "description": src_row["description"],
         "current_state": src_row["current_state"]
-            if isinstance(src_row["current_state"], dict) else {},
-        "metadata": src_row["metadata"]
-            if isinstance(src_row["metadata"], dict) else {},
+        if isinstance(src_row["current_state"], dict)
+        else {},
+        "metadata": src_row["metadata"] if isinstance(src_row["metadata"], dict) else {},
     }
     target_snapshot = {
         "id": str(target_id),
@@ -598,9 +651,9 @@ async def _perform_merge(
         "type_id": tgt_row["type_id"],
         "description": tgt_row["description"],
         "current_state": tgt_row["current_state"]
-            if isinstance(tgt_row["current_state"], dict) else {},
-        "metadata": tgt_row["metadata"]
-            if isinstance(tgt_row["metadata"], dict) else {},
+        if isinstance(tgt_row["current_state"], dict)
+        else {},
+        "metadata": tgt_row["metadata"] if isinstance(tgt_row["metadata"], dict) else {},
     }
 
     # Re-parent aliases.
@@ -844,15 +897,20 @@ async def resolve_entities(
             if existing_eid_entity is not None:
                 resolved_entity_id = existing_eid_entity
                 resolution_method = "external_id_match"
-                match_signals.append({
-                    "type": "external_id",
-                    "namespace": namespace,
-                    "external_id": external_id,
-                    "weight": 1.0,
-                })
+                match_signals.append(
+                    {
+                        "type": "external_id",
+                        "namespace": namespace,
+                        "external_id": external_id,
+                        "weight": 1.0,
+                    }
+                )
                 _log.debug(
                     "resolve_entities: span %r matched existing entity %s via %s/%s",
-                    raw_span, resolved_entity_id, namespace, external_id,
+                    raw_span,
+                    resolved_entity_id,
+                    namespace,
+                    external_id,
                 )
             else:
                 # Create a new entity and register the external ID.
@@ -882,15 +940,20 @@ async def resolve_entities(
                 except Exception as exc:
                     _log.warning(
                         "resolve_entities: failed to insert external_id %s/%s for %s: %s",
-                        namespace, external_id, resolved_entity_id, exc,
+                        namespace,
+                        external_id,
+                        resolved_entity_id,
+                        exc,
                     )
                 resolution_method = "external_id_new"
-                match_signals.append({
-                    "type": "external_id_new",
-                    "namespace": namespace,
-                    "external_id": external_id,
-                    "weight": 1.0,
-                })
+                match_signals.append(
+                    {
+                        "type": "external_id_new",
+                        "namespace": namespace,
+                        "external_id": external_id,
+                        "weight": 1.0,
+                    }
+                )
 
         # ── 3b. Exact canonical-name match ────────────────────────────────
         if resolved_entity_id is None:
@@ -898,15 +961,18 @@ async def resolve_entities(
             if existing_name_entity is not None:
                 resolved_entity_id = existing_name_entity
                 resolution_method = "exact_name"
-                match_signals.append({
-                    "type": "exact_name",
-                    "normalized": norm_span,
-                    "type_id": type_id,
-                    "weight": 0.9,
-                })
+                match_signals.append(
+                    {
+                        "type": "exact_name",
+                        "normalized": norm_span,
+                        "type_id": type_id,
+                        "weight": 0.9,
+                    }
+                )
                 _log.debug(
                     "resolve_entities: span %r matched existing entity %s via name",
-                    raw_span, resolved_entity_id,
+                    raw_span,
+                    resolved_entity_id,
                 )
 
         # ── 3c. Embedding similarity ──────────────────────────────────────
@@ -922,14 +988,18 @@ async def resolve_entities(
                 # High similarity → treat as the same entity (candidate for merge).
                 resolved_entity_id = best_id
                 resolution_method = "embedding_similar"
-                match_signals.append({
-                    "type": "embedding_cosine",
-                    "cosine_distance": round(best_dist, 4),
-                    "weight": round(1.0 - best_dist, 4),
-                })
+                match_signals.append(
+                    {
+                        "type": "embedding_cosine",
+                        "cosine_distance": round(best_dist, 4),
+                        "weight": round(1.0 - best_dist, 4),
+                    }
+                )
                 _log.debug(
                     "resolve_entities: span %r matched entity %s via embedding (dist=%.3f)",
-                    raw_span, resolved_entity_id, best_dist,
+                    raw_span,
+                    resolved_entity_id,
+                    best_dist,
                 )
 
         # ── 3d. Create a new entity if still unresolved ───────────────────
@@ -954,7 +1024,8 @@ async def resolve_entities(
                 await _embed_entity(pool, embeddings, resolved_entity_id, raw_span)
                 _log.debug(
                     "resolve_entities: span %r → new entity %s",
-                    raw_span, resolved_entity_id,
+                    raw_span,
+                    resolved_entity_id,
                 )
 
         # If we have an embedding and a resolved entity but the entity was just
@@ -967,14 +1038,14 @@ async def resolve_entities(
                 if cand_dist <= COSINE_REVIEW_THRESHOLD:
                     neg_signals: list[dict[str, Any]] = []
                     if cand_dist > COSINE_MERGE_THRESHOLD:
-                        neg_signals.append({
-                            "type": "name_differs",
-                            "detail": "spans do not share canonical name",
-                        })
+                        neg_signals.append(
+                            {
+                                "type": "name_differs",
+                                "detail": "spans do not share canonical name",
+                            }
+                        )
                     emb_conf = round(_EMBEDDING_BASE_CONFIDENCE * (1.0 - cand_dist), 2)
-                    decision = (
-                        "merge" if cand_dist <= COSINE_MERGE_THRESHOLD else "needs_review"
-                    )
+                    decision = "merge" if cand_dist <= COSINE_MERGE_THRESHOLD else "needs_review"
                     try:
                         await _upsert_resolution_candidate(
                             pool,
@@ -982,11 +1053,13 @@ async def resolve_entities(
                             right_id=cand_entity_id,
                             proposed_decision=decision,
                             confidence=emb_conf,
-                            matching_signals=[{
-                                "type": "embedding_cosine",
-                                "cosine_distance": round(cand_dist, 4),
-                                "weight": round(1.0 - cand_dist, 4),
-                            }],
+                            matching_signals=[
+                                {
+                                    "type": "embedding_cosine",
+                                    "cosine_distance": round(cand_dist, 4),
+                                    "weight": round(1.0 - cand_dist, 4),
+                                }
+                            ],
                             negative_signals=neg_signals,
                             decision_source="model",
                             evidence_document_ids=doc_ids,
@@ -1017,12 +1090,14 @@ async def resolve_entities(
                 right_id=right_id,
                 proposed_decision="merge",
                 confidence=EXACT_MATCH_CONFIDENCE,
-                matching_signals=[{
-                    "type": "external_id",
-                    "namespace": namespace,
-                    "external_id": external_id,
-                    "weight": 1.0,
-                }],
+                matching_signals=[
+                    {
+                        "type": "external_id",
+                        "namespace": namespace,
+                        "external_id": external_id,
+                        "weight": 1.0,
+                    }
+                ],
                 negative_signals=[],
                 decision_source="external_id_match",
                 evidence_document_ids=[],
@@ -1030,8 +1105,10 @@ async def resolve_entities(
             counters["candidates_created"] += 1
         except Exception as exc:
             _log.warning(
-                "resolve_entities: failed to create external-id merge candidate "
-                "for %s/%s: %s", namespace, external_id, exc,
+                "resolve_entities: failed to create external-id merge candidate for %s/%s: %s",
+                namespace,
+                external_id,
+                exc,
             )
 
     # ── 5. Write mention links ────────────────────────────────────────────────
@@ -1052,9 +1129,7 @@ async def resolve_entities(
             )
             resolved_count += 1
         except Exception as exc:
-            _log.warning(
-                "resolve_entities: failed to update mention %s: %s", mention_id, exc
-            )
+            _log.warning("resolve_entities: failed to update mention %s: %s", mention_id, exc)
 
     counters["mentions_resolved"] = resolved_count
 
@@ -1087,11 +1162,8 @@ async def resolve_entities(
 
         # Conservative: left absorbs right (target = left; source = right).
         # The loser (source) is deprecated; the winner (target) survives.
-        rationale = (
-            f"Auto-merge by {_JOB_ACTOR}: "
-            + ", ".join(
-                s.get("type", "signal") for s in (signals if isinstance(signals, list) else [])
-            )
+        rationale = f"Auto-merge by {_JOB_ACTOR}: " + ", ".join(
+            s.get("type", "signal") for s in (signals if isinstance(signals, list) else [])
         )
         try:
             await _perform_merge(
@@ -1112,9 +1184,7 @@ async def resolve_entities(
                 right_id,
             )
         except Exception as exc:
-            _log.warning(
-                "resolve_entities: merge failed for candidate %s: %s", candidate_id, exc
-            )
+            _log.warning("resolve_entities: merge failed for candidate %s: %s", candidate_id, exc)
 
     _log.info("resolve_entities: %s", counters)
     return counters
@@ -1240,9 +1310,7 @@ async def derive_relationships(
         return counters
 
     if str(row["status"]) != "active":
-        _log.info(
-            "derive_relationships: claim %s status=%s — skipping", claim_id, row["status"]
-        )
+        _log.info("derive_relationships: claim %s status=%s — skipping", claim_id, row["status"])
         counters["relationships_skipped"] += 1
         return counters
 
@@ -1250,7 +1318,9 @@ async def derive_relationships(
     if confidence < MIN_CLAIM_CONFIDENCE:
         _log.info(
             "derive_relationships: claim %s confidence=%.2f < %.2f — skipping",
-            claim_id, confidence, MIN_CLAIM_CONFIDENCE,
+            claim_id,
+            confidence,
+            MIN_CLAIM_CONFIDENCE,
         )
         counters["relationships_skipped"] += 1
         return counters
@@ -1306,14 +1376,12 @@ async def derive_relationships(
         counters["relationships_skipped"] += 1
         return counters
 
-    valid_from = row["valid_from"]   # datetime | None
+    valid_from = row["valid_from"]  # datetime | None
     valid_until = row["valid_until"]  # datetime | None
 
     # Raw list from asyncpg may be strings or UUIDs — normalise to UUID list.
     raw_doc_ids: list[Any] = list(row["source_document_ids"] or [])
-    source_document_ids: list[uuid.UUID] = [
-        uuid.UUID(str(d)) for d in raw_doc_ids
-    ]
+    source_document_ids: list[uuid.UUID] = [uuid.UUID(str(d)) for d in raw_doc_ids]
 
     # ── 4. Upsert relationship ────────────────────────────────────────────────
     # Idempotent key: (type_id, subject_entity_id, object_entity_id, valid_from).
@@ -1420,8 +1488,7 @@ async def derive_relationships(
     )
     counters["relationships_written"] += 1
     _log.info(
-        "derive_relationships: claim %s → relationship %s "
-        "(type=%s, subject=%s, object=%s)",
+        "derive_relationships: claim %s → relationship %s (type=%s, subject=%s, object=%s)",
         claim_id,
         rel_id,
         type_id,
@@ -1652,9 +1719,7 @@ async def _link_one_end(
                 if emb_rows:
                     best_dist = float(emb_rows[0]["distance"])
                     if best_dist <= LINK_COSINE_THRESHOLD:
-                        confidence = round(
-                            LINK_EMBEDDING_MIN_CONFIDENCE * (1.0 - best_dist), 2
-                        )
+                        confidence = round(LINK_EMBEDDING_MIN_CONFIDENCE * (1.0 - best_dist), 2)
                         return (
                             uuid.UUID(str(emb_rows[0]["entity_id"])),
                             confidence,
@@ -1795,19 +1860,13 @@ async def link_claim_entities(
         else:
             existing_meta = {}
 
-        link_provenance: dict[str, Any] = dict(
-            existing_meta.get("claim_entity_links", {})
-        )
+        link_provenance: dict[str, Any] = dict(existing_meta.get("claim_entity_links", {}))
 
         new_subject_id: uuid.UUID | None = (
-            uuid.UUID(str(row["subject_entity_id"]))
-            if row["subject_entity_id"]
-            else None
+            uuid.UUID(str(row["subject_entity_id"])) if row["subject_entity_id"] else None
         )
         new_object_id: uuid.UUID | None = (
-            uuid.UUID(str(row["object_entity_id"]))
-            if row["object_entity_id"]
-            else None
+            uuid.UUID(str(row["object_entity_id"])) if row["object_entity_id"] else None
         )
 
         subject_changed = False
@@ -1838,13 +1897,18 @@ async def link_claim_entities(
                     _log.debug(
                         "link_claim_entities: claim %s subject %r → entity %s "
                         "(method=%s conf=%.3f)",
-                        claim_id, subject_text, entity_id, method, confidence,
+                        claim_id,
+                        subject_text,
+                        entity_id,
+                        method,
+                        confidence,
                     )
             else:
                 counters["subject_skipped"] += 1
                 _log.debug(
                     "link_claim_entities: claim %s subject %r — no confident link",
-                    claim_id, subject_text,
+                    claim_id,
+                    subject_text,
                 )
 
         # ── 2b. Link object end if NULL ───────────────────────────────────────
@@ -1869,15 +1933,19 @@ async def link_claim_entities(
                     object_changed = True
                     counters["object_linked"] += 1
                     _log.debug(
-                        "link_claim_entities: claim %s object %r → entity %s "
-                        "(method=%s conf=%.3f)",
-                        claim_id, object_text, entity_id, method, confidence,
+                        "link_claim_entities: claim %s object %r → entity %s (method=%s conf=%.3f)",
+                        claim_id,
+                        object_text,
+                        entity_id,
+                        method,
+                        confidence,
                     )
             else:
                 counters["object_skipped"] += 1
                 _log.debug(
                     "link_claim_entities: claim %s object %r — no confident link",
-                    claim_id, object_text,
+                    claim_id,
+                    object_text,
                 )
 
         # ── 3. Persist updated entity links ───────────────────────────────────
@@ -1903,7 +1971,8 @@ async def link_claim_entities(
             except Exception as exc:
                 _log.warning(
                     "link_claim_entities: DB update failed for claim %s: %s",
-                    claim_id, exc,
+                    claim_id,
+                    exc,
                 )
 
     _log.info("link_claim_entities: %s", counters)
@@ -2024,23 +2093,24 @@ async def write_fact_versions(
     claim_ids: list[uuid.UUID] = [uuid.UUID(str(r["id"])) for r in claim_rows]
     doc_ids: list[uuid.UUID] = list(
         dict.fromkeys(
-            uuid.UUID(str(d))
-            for r in claim_rows
-            for d in (r["source_document_ids"] or [])
+            uuid.UUID(str(d)) for r in claim_rows for d in (r["source_document_ids"] or [])
         )
     )
     # Confidence: mean of claim confidences (or 0.5 as default).
-    confidence_rows = await pool.fetch(
-        """
+    confidence_rows = (
+        await pool.fetch(
+            """
         SELECT extraction_confidence FROM claims
         WHERE id = ANY($1) AND status = 'active'
         """,
-        claim_ids,
-    ) if claim_ids else []
+            claim_ids,
+        )
+        if claim_ids
+        else []
+    )
     if confidence_rows:
         avg_confidence = round(
-            sum(float(r["extraction_confidence"]) for r in confidence_rows)
-            / len(confidence_rows),
+            sum(float(r["extraction_confidence"]) for r in confidence_rows) / len(confidence_rows),
             2,
         )
     else:
@@ -2078,8 +2148,8 @@ async def write_fact_versions(
         new_id,
         entity_uuid,
         json.dumps(payload),
-        now,         # valid_from = now (state snapshot time)
-        now,         # recorded_at = now
+        now,  # valid_from = now (state snapshot time)
+        now,  # recorded_at = now
         doc_ids,
         claim_ids,
         avg_confidence,

@@ -235,14 +235,14 @@ async def main() -> None:
 
     # Verify at least one search returned results
     try:
-        any_results = await hybrid_search(
-            query="entity", pool=pool, embeddings=emb, limit=10
-        )
+        any_results = await hybrid_search(query="entity", pool=pool, embeddings=emb, limit=10)
         if any_results:
             print("\n  [PASS] hybrid_search returned ranked results")
         else:
-            print("\n  [WARN] hybrid_search returned 0 results — "
-                  "check that chunks are embedded and FTS index exists")
+            print(
+                "\n  [WARN] hybrid_search returned 0 results — "
+                "check that chunks are embedded and FTS index exists"
+            )
     except Exception as exc:
         print(f"\n  [FAIL] hybrid_search: {exc}")
         all_passed = False

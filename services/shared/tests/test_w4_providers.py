@@ -154,6 +154,7 @@ def gemini_adapter_with_mock_client() -> Any:
     from intercal_shared.adapters.llm_gemini import GeminiLlmAdapter
 
     mock_client = MagicMock()
+
     # Patch genai.types.GenerateContentConfig so the adapter can call it
     def _mock_config(**kw: Any) -> dict[str, Any]:
         return kw
@@ -866,9 +867,7 @@ class TestConfigValidation:
             _isolated_settings(llm_provider="vertex", vertex_project="", gcloud_project_id=None)
 
     def test_vertex_with_gcloud_project_id_ok(self) -> None:
-        cfg = _isolated_settings(
-            llm_provider="vertex", vertex_project="", gcloud_project_id="p"
-        )
+        cfg = _isolated_settings(llm_provider="vertex", vertex_project="", gcloud_project_id="p")
         assert cfg.resolved_vertex_project == "p"
 
     def test_zero_embeddings_dim_raises(self) -> None:

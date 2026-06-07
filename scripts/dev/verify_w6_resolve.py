@@ -55,12 +55,12 @@ async def main() -> None:
     entities_before = await pool.fetchval(
         "SELECT count(*) FROM entities WHERE is_deprecated = false"
     )
-    candidates_before = await pool.fetchval(
-        "SELECT count(*) FROM entity_resolution_candidates"
-    )
+    candidates_before = await pool.fetchval("SELECT count(*) FROM entity_resolution_candidates")
 
-    print(f"  Before: {unresolved_before} unresolved mentions, {entities_before} entities, "
-          f"{candidates_before} candidates")
+    print(
+        f"  Before: {unresolved_before} unresolved mentions, {entities_before} entities, "
+        f"{candidates_before} candidates"
+    )
 
     if int(unresolved_before) == 0:
         print("  [WARN] No unresolved mentions found — run W3 first.")
@@ -81,17 +81,17 @@ async def main() -> None:
     entities_after = await pool.fetchval(
         "SELECT count(*) FROM entities WHERE is_deprecated = false"
     )
-    candidates_after = await pool.fetchval(
-        "SELECT count(*) FROM entity_resolution_candidates"
-    )
+    candidates_after = await pool.fetchval("SELECT count(*) FROM entity_resolution_candidates")
     review_count = await pool.fetchval(
         "SELECT count(*) FROM entity_resolution_candidates"
         " WHERE proposed_decision = 'needs_review' AND decision_status = 'open'"
     )
 
     print()
-    print(f"  After:  {unresolved_after} unresolved mentions, {entities_after} entities, "
-          f"{candidates_after} candidates ({review_count} needs_review)")
+    print(
+        f"  After:  {unresolved_after} unresolved mentions, {entities_after} entities, "
+        f"{candidates_after} candidates ({review_count} needs_review)"
+    )
 
     # Check ≥ 1 entity created
     entities_delta = int(entities_after) - int(entities_before)
@@ -129,8 +129,9 @@ async def main() -> None:
 
     # Show candidates
     if int(candidates_after) > 0:
-        print(f"  [INFO] {candidates_after} resolution candidates in DB "
-              f"({review_count} needs_review)")
+        print(
+            f"  [INFO] {candidates_after} resolution candidates in DB ({review_count} needs_review)"
+        )
     else:
         print("  [INFO] No resolution candidates (spans too distinct or no embeddings hits)")
 

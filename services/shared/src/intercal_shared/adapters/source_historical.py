@@ -262,9 +262,7 @@ class RegistryReleasesAdapter:
         )
         published_at_value = response.get("createdAt") or response.get("lastModified") or ""
         published_at = _parse_dt(str(published_at_value))
-        if not _within_window(
-            published_at, start_date, end_date, require_timestamp=bounded_window
-        ):
+        if not _within_window(published_at, start_date, end_date, require_timestamp=bounded_window):
             return None
         payload = {"registry": "huggingface", "model_id": model_id, "model_info": response}
         return RawDocument(
@@ -338,7 +336,9 @@ class ArxivAdapter:
                         break
                     if not _elem_text(entry, "{http://www.w3.org/2005/Atom}id"):
                         continue
-                    published_at = _parse_dt(_elem_text(entry, "{http://www.w3.org/2005/Atom}published"))
+                    published_at = _parse_dt(
+                        _elem_text(entry, "{http://www.w3.org/2005/Atom}published")
+                    )
                     if not _within_window(
                         published_at,
                         start_date,

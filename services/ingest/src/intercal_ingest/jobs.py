@@ -462,9 +462,7 @@ async def normalize_document(
         )
         await _clear_chunks(pool, doc_id)
         await pool.execute(
-            "UPDATE source_documents "
-            "SET normalized_at = now(), chunk_count = 0 "
-            "WHERE id = $1",
+            "UPDATE source_documents SET normalized_at = now(), chunk_count = 0 WHERE id = $1",
             doc_id,
         )
         return {"skipped": False, "chunk_count": 0, "language": row["language"], "clean_chars": 0}
@@ -496,9 +494,7 @@ async def normalize_document(
         )
         await _clear_chunks(pool, doc_id)
         await pool.execute(
-            "UPDATE source_documents "
-            "SET normalized_at = now(), chunk_count = 0 "
-            "WHERE id = $1",
+            "UPDATE source_documents SET normalized_at = now(), chunk_count = 0 WHERE id = $1",
             doc_id,
         )
         return {"skipped": False, "chunk_count": 0, "language": row["language"], "clean_chars": 0}

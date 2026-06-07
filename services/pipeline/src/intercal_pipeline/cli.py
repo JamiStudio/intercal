@@ -57,9 +57,7 @@ def _validate_date_bound(value: str | None, *, name: str) -> str | None:
     return value
 
 
-def build_backfill_overrides(
-    start_date: str | None, end_date: str | None
-) -> dict[str, object]:
+def build_backfill_overrides(start_date: str | None, end_date: str | None) -> dict[str, object]:
     start = _validate_date_bound(start_date, name="start-date")
     end = _validate_date_bound(end_date, name="end-date")
     if start and end and dt.date.fromisoformat(end) < dt.date.fromisoformat(start):
